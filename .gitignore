@@ -1,0 +1,16 @@
+
+.idea
+.vscode
+node_modules
+build
+tmp
+temp
+
+database.sqlite
+
+
+# Output
+.output
+.vercel
+.svelte-kit
+build
