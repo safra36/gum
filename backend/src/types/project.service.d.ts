@@ -1,8 +1,9 @@
 
 
-export interface CreateStage {
-    script: string;
-    stageId: string;
+export interface CreateProject {
+    title: string;
+    working_dir: string;
+    stagingConfig: CreateStagingConfig;
 }
 
 export interface CreateStagingConfig {
@@ -11,13 +12,23 @@ export interface CreateStagingConfig {
     stages: CreateStage[];
 }
 
-export interface CreateProject {
-    title: string;
-    working_dir: string;
-    stagingConfig: CreateStagingConfig;
+export interface CreateStage {
+    script: string;
+    stageId: string;
+}
+
+export interface UpdateProjectDTO {
+    title?: string;
+    working_dir?: string;
+    stagingConfig?: {
+        route?: string;
+        args?: string[];
+        stages?: UpdateStageDTO[];
+    };
 }
 
 export interface UpdateStageDTO {
-    script: string;
-    stageId: string;
+    id?: number;
+    script?: string;
+    stageId?: string;
 }

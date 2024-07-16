@@ -2,6 +2,8 @@
     import ProjectList from "$lib/components/ProjectList.svelte";
     import ProjectDetails from "$lib/components/ProjectDetails.svelte";
     import CreateProjectForm from "$lib/components/CreateProjectForm.svelte";
+    import UpdateProjectForm from "$lib/components/UpdateProjectForm.svelte";
+    import HealthCheck from "$lib/components/HealthCheck.svelte";
     import type { Project } from "$lib/types";
     import { fetchProjects } from "$lib/services/api";
     import { onMount } from "svelte";
@@ -11,6 +13,7 @@
     let selectedProject: Project | null = null;
     let loading = true;
     let showCreateForm = false;
+    let showUpdateForm = false;
 
     onMount(async () => {
         await loadProjects();
@@ -30,6 +33,7 @@
     function handleProjectSelect(event: CustomEvent<Project>) {
         selectedProject = event.detail;
         showCreateForm = false;
+        showUpdateForm = false;
     }
 
     function handleProjectCreated(event: CustomEvent<Project>) {
@@ -38,11 +42,26 @@
         showCreateForm = false;
     }
 
+    function handleProjectUpdated(event: CustomEvent<Project>) {
+        const updatedProject = event.detail;
+        projects = projects.map((p) =>
+            p.id === updatedProject.id ? updatedProject : p,
+        );
+        selectedProject = updatedProject;
+        showUpdateForm = false;
+    }
+
     function toggleCreateForm() {
         showCreateForm = !showCreateForm;
         if (showCreateForm) {
             selectedProject = null;
+            showUpdateForm = false;
         }
+    }
+
+    function toggleUpdateForm() {
+        showUpdateForm = !showUpdateForm;
+        showCreateForm = false;
     }
 </script>
 
@@ -50,18 +69,21 @@
     <nav class="bg-blue-600 text-white p-4 shadow-md">
         <div class="container mx-auto flex justify-between items-center">
             <h1 class="text-3xl font-bold">Deployment Management Panel</h1>
-            <button
-                class="bg-white text-blue-600 px-4 py-2 rounded-full hover:bg-blue-100 transition-colors duration-200 flex items-center"
-                on:click={toggleCreateForm}
-            >
-                {#if showCreateForm}
-                    <X size={20} class="mr-2" />
-                    Cancel
-                {:else}
-                    <Plus size={20} class="mr-2" />
-                    New Project
-                {/if}
-            </button>
+            <div class="flex items-center space-x-4">
+                <HealthCheck />
+                <button
+                    class="bg-white text-blue-600 px-4 py-2 rounded-full hover:bg-blue-100 transition-colors duration-200 flex items-center"
+                    on:click={toggleCreateForm}
+                >
+                    {#if showCreateForm}
+                        <X size={20} class="mr-2" />
+                        Cancel
+                    {:else}
+                        <Plus size={20} class="mr-2" />
+                        New Project
+                    {/if}
+                </button>
+            </div>
         </div>
     </nav>
 
@@ -84,8 +106,16 @@
                         <CreateProjectForm
                             on:projectCreated={handleProjectCreated}
                         />
+                    {:else if showUpdateForm && selectedProject}
+                        <UpdateProjectForm
+                            project={selectedProject}
+                            on:projectUpdated={handleProjectUpdated}
+                        />
                     {:else if selectedProject}
-                        <ProjectDetails project={selectedProject} />
+                        <ProjectDetails
+                            project={selectedProject}
+                            onEdit={toggleUpdateForm}
+                        />
                     {:else}
                         <div
                             class="bg-white shadow-lg rounded-lg p-6 flex flex-col items-center justify-center h-64"
@@ -115,9 +145,3 @@
         {/if}
     </div>
 </main>
-
-<style>
-    :global(body) {
-        @apply bg-gray-100;
-    }
-</style>

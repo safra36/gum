@@ -53,19 +53,22 @@ export async function createProject(project: Omit<Project, 'id'>): Promise<Proje
     return response.json();
 }
 
-// Add a new function to update a stage
-export async function updateStage(stageId: number, stageData: Partial<Stage>): Promise<Stage> {
-    const response = await fetch(`${PUBLIC_BASE_URL}/stage/${stageId}`, {
+
+export async function updateProject(projectId: number, projectData: Partial<Project>): Promise<Project> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}`, {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify(stageData),
+        body: JSON.stringify(projectData),
     });
+
     if (!response.ok) {
-        throw new Error('Failed to update stage');
+        throw new Error('Failed to update project');
     }
-    return response.json();
+
+    const result = await response.json();
+    return result.project;
 }
 
 // Add a new function to check the health of the API

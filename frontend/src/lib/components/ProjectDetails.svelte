@@ -5,9 +5,10 @@
     import GitLog from "./GitLog.svelte";
     import { executeStaging, fetchGitLog } from "../services/api";
     import type { Project, ExecutionResult, GitLogEntry } from "$lib/types";
-    import { Loader2, FolderOpen, GitBranch, Play } from "lucide-svelte";
+    import { Loader2, FolderOpen, GitBranch, Play, Edit } from "lucide-svelte";
 
     export let project: Project;
+    export let onEdit: () => void;
 
     let executionResults: ExecutionResult[] | null = null;
     let gitLog: GitLogEntry[] | null = null;
@@ -33,6 +34,7 @@
 
     $: if (project.id !== previousProjectId) {
         clearResults();
+        // @ts-ignore
         previousProjectId = project.id;
     }
 
@@ -89,6 +91,7 @@
         gitLogError = null;
         gitLog = null;
         try {
+            // @ts-ignore
             gitLog = await fetchGitLog(project.id);
         } catch (error) {
             console.error("Failed to fetch git log:", error);
@@ -103,10 +106,20 @@
     class="bg-white shadow-lg rounded-lg p-6 transition-all duration-300 ease-in-out"
     in:fade={{ duration: 300, delay: 300 }}
 >
-    <h2 class="text-3xl font-bold mb-6 text-gray-800 flex items-center">
-        <FolderOpen class="mr-3 text-blue-500" size={28} />
-        {project.title}
-    </h2>
+    <div class="flex justify-between items-center mb-6">
+        <h2 class="text-3xl font-bold text-gray-800 flex items-center">
+            <FolderOpen class="mr-3 text-blue-500" size={28} />
+            {project.title}
+        </h2>
+        <button
+            class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-full transition-colors duration-200 flex items-center"
+            on:click={onEdit}
+        >
+            <Edit size={18} class="mr-2" />
+            Edit Project
+        </button>
+    </div>
+
 
     <div
         class="mb-6 bg-gray-100 p-4 rounded-lg"

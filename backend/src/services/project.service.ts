@@ -2,7 +2,7 @@ import { AppDataSource } from "../data-source";
 import { Project } from "../entity/Project";
 import { StagingConfig } from "../entity/StagingConfig";
 import { Stage } from "../entity/Stage";
-import { CreateProject, CreateStagingConfig, CreateStage, UpdateStageDTO } from "../types/project.service";
+import { CreateProject, CreateStagingConfig, CreateStage, UpdateStageDTO, UpdateProjectDTO } from "../types/project.service";
 
 export class ProjectService {
     private static instance: ProjectService;
@@ -68,6 +68,51 @@ export class ProjectService {
 
         // Return the project without circular references
         return this.getProjectById(savedProject.id);
+    }
+
+    public async updateProject(projectId: number, updateData: UpdateProjectDTO): Promise<Project> {
+        const projectRepository = AppDataSource.getRepository(Project);
+        const project = await projectRepository.findOne({
+            where: { id: projectId },
+            relations: ['stagingConfig', 'stagingConfig.stages']
+        });
+
+        if (!project) {
+            throw new Error('Project not found');
+        }
+
+        // Update project details
+        project.title = updateData.title;
+        project.working_dir = updateData.working_dir;
+
+        // Update staging config
+        if (updateData.stagingConfig) {
+            if (!project.stagingConfig) {
+                project.stagingConfig = new StagingConfig();
+            }
+            project.stagingConfig.route = updateData.stagingConfig.route;
+            project.stagingConfig.args = updateData.stagingConfig.args;
+
+            // Update stages
+            const updatedStages = updateData.stagingConfig.stages.map(stageData => {
+                const existingStage = project.stagingConfig.stages.find(s => s.id === stageData.id);
+                if (existingStage) {
+                    existingStage.script = stageData.script;
+                    existingStage.stageId = stageData.stageId;
+                    return existingStage;
+                } else {
+                    const newStage = new Stage();
+                    newStage.script = stageData.script;
+                    newStage.stageId = stageData.stageId;
+                    newStage.stagingConfig = project.stagingConfig;
+                    return newStage;
+                }
+            });
+
+            project.stagingConfig.stages = updatedStages;
+        }
+
+        return await projectRepository.save(project);
     }
 
     public async updateStage(stageId: number, updateData: UpdateStageDTO): Promise<Stage> {

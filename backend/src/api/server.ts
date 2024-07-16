@@ -2,7 +2,7 @@ import path from "path";
 import { Project } from "../entity/Project";
 import { ExecutorService } from "../services/executor.service";
 import { ProjectService } from "../services/project.service";
-import { CreateProject, CreateStagingConfig, CreateStage, UpdateStageDTO } from "../types/project.service";
+import { CreateProject, CreateStagingConfig, CreateStage, UpdateStageDTO, UpdateProjectDTO } from "../types/project.service";
 import { ServerConfig, RouteConfig, ProjectDTO } from "../types/server-types";
 import express, { Request, Response, NextFunction } from 'express';
 import cors from "cors"
@@ -147,7 +147,33 @@ export class APIServer {
             }
         });
 
-        // Update stage route
+
+        this.app.put('/project/:projectId', this.authenticateRequest, async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.projectId);
+                const updateData: UpdateProjectDTO = {
+                    title: req.body.title,
+                    working_dir: req.body.working_dir,
+                    stagingConfig: {
+                        route: req.body.stagingConfigs.route,
+                        args: req.body.stagingConfigs.args,
+                        stages: req.body.stagingConfigs.stages
+                    }
+                };
+                const updatedProject = await this.projectService.updateProject(projectId, updateData);
+                
+                // Reset routes after project update
+                const newConfig = await this.generateNewConfig();
+                this.resetRoutes(newConfig);
+                
+                const projectDTO = this.projectToDTO(updatedProject);
+                res.status(200).json({ message: 'Project updated successfully', project: projectDTO });
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to update project', details: error.message });
+            }
+        });
+
+        // Existing stage update route (you might want to keep this for individual stage updates)
         this.app.put('/stage/:stageId', this.authenticateRequest, async (req: Request, res: Response) => {
             try {
                 const stageId = parseInt(req.params.stageId);
