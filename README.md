@@ -62,7 +62,7 @@ GUM ( Deployment Management Panel ) is a web-based application designed to strea
 
 2. Navigate to the project directory:
    ```
-   cd gum
+   cd gum frontend or cd gum backend 
    ```
 
 3. Install dependencies:
