@@ -24,6 +24,11 @@
 
 GUM ( Deployment Management Panel ) is a web-based application designed to streamline the process of managing and executing deployment projects. It provides an intuitive interface for creating, managing, and executing staging configurations for various projects.
 
+
+![Overview](https://raw.githubusercontent.com/safra36/gum/main/screenshots/overview.png)
+![Project Overview](https://raw.githubusercontent.com/safra36/gum/main/screenshots/project-overview.png)
+![Adding Project](https://raw.githubusercontent.com/safra36/gum/main/screenshots/adding-project.png)
+
 ## Features
 
 - Create and manage multiple deployment projects
