@@ -48,15 +48,26 @@ export class ProjectService {
             const savedStagingConfig = await AppDataSource.manager.save(stagingConfig);
 
             // Create and save stages
-            const stages = await Promise.all(dto.stagingConfig.stages.map(async (stageDto) => {
+
+            savedStagingConfig.stages = dto.stagingConfig.stages.map(stageDto => {
+                const stage = new Stage();
+                stage.script = stageDto.script;
+                stage.stageId = stageDto.stageId;
+                stage.stagingConfig = savedStagingConfig;
+                return stage;
+                // return await AppDataSource.manager.save(stage);
+            })
+
+            const stages = await AppDataSource.getRepository(StagingConfig).save(savedStagingConfig)
+
+            /* const stages = await Promise.all(dto.stagingConfig.stages.map(async (stageDto) => {
                 const stage = new Stage();
                 stage.script = stageDto.script;
                 stage.stageId = stageDto.stageId;
                 stage.stagingConfig = savedStagingConfig;
                 return await AppDataSource.manager.save(stage);
-            }));
+            })); */
 
-            savedStagingConfig.stages = stages;
             savedProject.stagingConfig = savedStagingConfig;
 
             await AppDataSource.manager.save(savedProject);
