@@ -1,4 +1,4 @@
-import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
+import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 import { StagingConfig } from "./StagingConfig";
 
 
@@ -16,4 +16,7 @@ export class Stage {
 
     @ManyToOne(() => StagingConfig, stagingConfig => stagingConfig.stages)
     stagingConfig: StagingConfig;
+
+    @CreateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP(6)" })
+    created_at: Date;
 }

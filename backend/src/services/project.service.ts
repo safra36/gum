@@ -149,7 +149,18 @@ export class ProjectService {
 
     public async getAllProjects(): Promise<Project[]> {
         return await AppDataSource.manager.find(Project, {
-            relations: ['stagingConfig', 'stagingConfig.stages']
+            order : {
+                stagingConfig : {
+                    stages : {
+                        created_at : "DESC"
+                    }
+                }
+            },
+            relations: {
+                stagingConfig : {
+                    stages : true
+                }
+            }
         });
     }
 }

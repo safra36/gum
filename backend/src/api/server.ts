@@ -68,6 +68,7 @@ export class APIServer {
                             });
                         } else {
                             try {
+                                console.log("executing stage", stage.stageId);
                                 const result = await executorService.executeScript(stage.script, config.args);
                                 results.push({
                                     stageId: stage.stageId,
