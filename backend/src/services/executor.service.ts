@@ -1,5 +1,6 @@
 import { exec, ExecOptions } from "child_process";
 import * as os from "os";
+import { GitLogEntry } from "../types/executor.service";
 
 interface ExecutionResult {
     stdout: string;
@@ -19,6 +20,42 @@ export class ExecutorService {
         return ExecutorService.instance;
     }
 
+
+    async extractGitLogs(repoPath: string, ...additionalArgs: string[]): Promise<GitLogEntry[]> {
+
+        const executor = ExecutorService.getInstance();
+
+        console.log(repoPath);
+        
+        
+        const script = `
+          cd "$1"
+          git log \
+          --pretty=format:'{%n "commit": "%H",%n "author": "%aN <%aE>",%n "date": "%ad",%n "message": "%f"%n},' \
+          $@
+        `;
+      
+        try {
+          const result = await executor.executeScript(script, [repoPath, ...additionalArgs]);
+      
+          if (result.exitCode !== 0) {
+            throw new Error(`Git log extraction failed: ${result.stderr}`);
+          }
+      
+          // Process the output to create valid JSON
+          let jsonString = '[' + result.stdout.trim().replace(/,\s*$/, '') + ']';
+          
+          // Parse the JSON string
+          const gitLogs: GitLogEntry[] = JSON.parse(jsonString);
+          
+          return gitLogs.slice(0, 10);
+
+        } catch (error) {
+          console.error('Error extracting git logs:', error);
+          throw error;
+        }
+    }
+
     public executeScript(script: string, args: string[]): Promise<ExecutionResult> {
         return new Promise<ExecutionResult>((resolve, reject) => {
             let stdout = "";
@@ -27,8 +64,7 @@ export class ExecutorService {
             try {
                 const substitutedScript = this.substituteArgs(script, args);
                 const { command, options } = this.buildCommandAndOptions(substitutedScript);
-
-                console.log(`Executing command: ${command}`);
+                
 
                 const process = exec(command, options, (error, stdoutData, stderrData) => {
                     stdout += stdoutData;

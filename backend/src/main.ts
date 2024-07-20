@@ -23,6 +23,8 @@ async function getDynamicRoutes(): Promise<RouteConfig[]> {
                 const results = [];
                 let failed = false;
 
+                console.log(config.stages);
+                
                 for (const stage of config.stages) {
                     if (failed) {
                         results.push({
@@ -33,7 +35,7 @@ async function getDynamicRoutes(): Promise<RouteConfig[]> {
                         });
                     } else {
                         try {
-                            console.log("executing stage", stage.stageId);
+                            console.log("executing stage", stage.stageId, config.stages.indexOf(stage));
                             const result = await executorService.executeScript(stage.script, config.args);
                             results.push({
                                 stageId: stage.stageId,

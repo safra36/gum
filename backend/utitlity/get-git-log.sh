@@ -1,5 +1,7 @@
 #!/bin/bash
 
+
+echo "executing this shett$1"
 cd "$1"
 
 git log \

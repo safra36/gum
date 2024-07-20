@@ -49,11 +49,13 @@ export class ProjectService {
 
             // Create and save stages
 
-            savedStagingConfig.stages = dto.stagingConfig.stages.map(stageDto => {
+            savedStagingConfig.stages = dto.stagingConfig.stages.map((stageDto, index) => {
                 const stage = new Stage();
                 stage.script = stageDto.script;
                 stage.stageId = stageDto.stageId;
                 stage.stagingConfig = savedStagingConfig;
+                // to preserve order of creating
+                stage.created_at = Date.now() + +index
                 return stage;
                 // return await AppDataSource.manager.save(stage);
             })
@@ -116,6 +118,7 @@ export class ProjectService {
                     newStage.script = stageData.script;
                     newStage.stageId = stageData.stageId;
                     newStage.stagingConfig = project.stagingConfig;
+                    newStage.created_at = Date.now()
                     return newStage;
                 }
             });
@@ -152,7 +155,8 @@ export class ProjectService {
             order : {
                 stagingConfig : {
                     stages : {
-                        created_at : "DESC"
+                        created_at : "ASC",
+                        id : "ASC"
                     }
                 }
             },

@@ -6,6 +6,7 @@ import { CreateProject, CreateStagingConfig, CreateStage, UpdateStageDTO, Update
 import { ServerConfig, RouteConfig, ProjectDTO } from "../types/server-types";
 import express, { Request, Response, NextFunction } from 'express';
 import cors from "cors"
+import { GitLogEntry } from "../types/executor.service";
 
 export class APIServer {
     
@@ -203,23 +204,10 @@ export class APIServer {
                     return res.status(404).json({ error: "Project not found" });
                 }
 
-                const scriptPath = path.join(__dirname, '../../utitlity/get-git-log.sh');
-                console.log("Path", scriptPath);
-                
-                const result = await this.executorService.executeScript(scriptPath, [project.working_dir]);
+                const gitLogs: GitLogEntry[] = await this.executorService.extractGitLogs(project.working_dir);
 
-                if (result.exitCode !== 0) {
-                    return res.status(500).json({
-                        error: "Failed to fetch git log",
-                        details: result.stderr
-                    });
-                }
+                res.json(gitLogs);
 
-                const gitLog = JSON.parse(result.stdout);
-                res.json({
-                    project: project.title,
-                    gitLog: gitLog
-                });
             } catch (error) {
                 res.status(500).json({
                     error: "Failed to fetch git log",

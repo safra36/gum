@@ -17,6 +17,6 @@ export class Stage {
     @ManyToOne(() => StagingConfig, stagingConfig => stagingConfig.stages)
     stagingConfig: StagingConfig;
 
-    @CreateDateColumn({ type: "timestamp", default: () => "CURRENT_TIMESTAMP(6)" })
-    created_at: Date;
+    @Column()
+    created_at: number;
 }
