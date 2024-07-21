@@ -79,3 +79,54 @@ export async function checkHealth(): Promise<{ status: string }> {
     }
     return response.json();
 }
+
+
+
+export async function fetchGitBranches(projectId: number): Promise<{ branches: string[], currentBranch: string }> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/branches`);
+    if (!response.ok) {
+        throw new Error('Failed to fetch git branches');
+    }
+    return response.json();
+}
+
+
+
+export async function switchGitBranch(projectId: number, branch: string): Promise<void> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/switch-branch`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ branch }),
+    });
+    if (!response.ok) {
+        throw new Error('Failed to switch git branch');
+    }
+}
+
+export async function revertToCommit(projectId: number, commitHash: string): Promise<void> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/revert-commit`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ commitHash }),
+    });
+    if (!response.ok) {
+        throw new Error('Failed to revert to commit');
+    }
+}
+
+export async function switchToHead(projectId: number, branch: string): Promise<void> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/switch-to-head`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ branch }),
+    });
+    if (!response.ok) {
+        throw new Error('Failed to switch to branch head');
+    }
+}

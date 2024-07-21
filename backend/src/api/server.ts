@@ -138,6 +138,56 @@ export class APIServer {
             }
         });
 
+
+        this.app.get('/project/:id/branches', this.authenticateRequest, async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+                const project = await this.projectService.getProjectById(projectId);
+
+                if (!project) {
+                    return res.status(404).json({ error: "Project not found" });
+                }
+
+                const executorService = ExecutorService.getInstance();
+                const branches = await executorService.getGitBranches(project.working_dir);
+                const currentBranch = await executorService.getCurrentGitBranch(project.working_dir);
+
+                res.json({ branches, currentBranch });
+            } catch (error) {
+                res.status(500).json({
+                    error: "Failed to fetch git branches",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        this.app.post('/project/:id/switch-branch', this.authenticateRequest, async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+                const { branch } = req.body;
+
+                if (!branch) {
+                    return res.status(400).json({ error: "Branch name is required" });
+                }
+
+                const project = await this.projectService.getProjectById(projectId);
+
+                if (!project) {
+                    return res.status(404).json({ error: "Project not found" });
+                }
+
+                const executorService = ExecutorService.getInstance();
+                await executorService.switchGitBranch(project.working_dir, branch);
+
+                res.json({ message: `Successfully switched to branch: ${branch}` });
+            } catch (error) {
+                res.status(500).json({
+                    error: "Failed to switch git branch",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
         // Fetch all stages route
         this.app.get('/stages', this.authenticateRequest, async (req: Request, res: Response) => {
             try {
@@ -215,6 +265,61 @@ export class APIServer {
                 });
             }
         });
+
+        this.app.post('/project/:id/revert-commit', this.authenticateRequest, async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+                const { commitHash } = req.body;
+
+                if (!commitHash) {
+                    return res.status(400).json({ error: "Commit hash is required" });
+                }
+
+                const project = await this.projectService.getProjectById(projectId);
+
+                if (!project) {
+                    return res.status(404).json({ error: "Project not found" });
+                }
+
+                const executorService = ExecutorService.getInstance();
+                await executorService.revertToCommit(project.working_dir, commitHash);
+
+                res.json({ message: `Successfully reverted to commit: ${commitHash}` });
+            } catch (error) {
+                res.status(500).json({
+                    error: "Failed to revert to commit",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        this.app.post('/project/:id/switch-to-head', this.authenticateRequest, async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+                const { branch } = req.body;
+
+                if (!branch) {
+                    return res.status(400).json({ error: "Branch name is required" });
+                }
+
+                const project = await this.projectService.getProjectById(projectId);
+
+                if (!project) {
+                    return res.status(404).json({ error: "Project not found" });
+                }
+
+                const executorService = ExecutorService.getInstance();
+                await executorService.switchToHead(project.working_dir, branch);
+
+                res.json({ message: `Successfully switched to head of branch: ${branch}` });
+            } catch (error) {
+                res.status(500).json({
+                    error: "Failed to switch to branch head",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+        
     }
 
     private projectToDTO(project: Project): ProjectDTO {

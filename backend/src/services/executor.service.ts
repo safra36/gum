@@ -104,6 +104,101 @@ export class ExecutorService {
         });
     }
 
+    async getGitBranches(repoPath: string): Promise<string[]> {
+        const script = `
+            cd "$1"
+            git branch --format="%(refname:short)"
+        `;
+
+        try {
+            const result = await this.executeScript(script, [repoPath]);
+
+            if (result.exitCode !== 0) {
+                throw new Error(`Failed to get git branches: ${result.stderr}`);
+            }
+
+            return result.stdout.trim().split('\n');
+        } catch (error) {
+            console.error('Error getting git branches:', error);
+            throw error;
+        }
+    }
+
+    async getCurrentGitBranch(repoPath: string): Promise<string> {
+        const script = `
+            cd "$1"
+            git rev-parse --abbrev-ref HEAD
+        `;
+
+        try {
+            const result = await this.executeScript(script, [repoPath]);
+
+            if (result.exitCode !== 0) {
+                throw new Error(`Failed to get current git branch: ${result.stderr}`);
+            }
+
+            return result.stdout.trim();
+        } catch (error) {
+            console.error('Error getting current git branch:', error);
+            throw error;
+        }
+    }
+
+    async switchGitBranch(repoPath: string, branch: string): Promise<void> {
+        const script = `
+            cd "$1"
+            git checkout "$2"
+        `;
+
+        try {
+            const result = await this.executeScript(script, [repoPath, branch]);
+
+            if (result.exitCode !== 0) {
+                throw new Error(`Failed to switch git branch: ${result.stderr}`);
+            }
+        } catch (error) {
+            console.error('Error switching git branch:', error);
+            throw error;
+        }
+    }
+
+    async revertToCommit(repoPath: string, commitHash: string): Promise<void> {
+        const script = `
+            cd "$1"
+            git checkout "$2"
+        `;
+
+        try {
+            const result = await this.executeScript(script, [repoPath, commitHash]);
+
+            if (result.exitCode !== 0) {
+                throw new Error(`Failed to revert to commit: ${result.stderr}`);
+            }
+        } catch (error) {
+            console.error('Error reverting to commit:', error);
+            throw error;
+        }
+    }
+
+    async switchToHead(repoPath: string, branch: string): Promise<void> {
+        const script = `
+            cd "$1"
+            git checkout "$2"
+            git pull origin "$2"
+        `;
+
+        try {
+            const result = await this.executeScript(script, [repoPath, branch]);
+
+            if (result.exitCode !== 0) {
+                throw new Error(`Failed to switch to branch head: ${result.stderr}`);
+            }
+        } catch (error) {
+            console.error('Error switching to branch head:', error);
+            throw error;
+        }
+    }
+
     private buildCommandAndOptions(script: string): { command: string, options: ExecOptions } {
         const platform = os.platform();
         let command: string;

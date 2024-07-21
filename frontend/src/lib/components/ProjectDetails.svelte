@@ -1,22 +1,31 @@
 <script lang="ts">
-    import { onMount, afterUpdate } from "svelte";
+
+import { onMount, afterUpdate } from "svelte";
     import { fade, fly } from "svelte/transition";
     import StageList from "./StageList.svelte";
     import GitLog from "./GitLog.svelte";
-    import { executeStaging, fetchGitLog } from "../services/api";
+    import { executeStaging, fetchGitLog, fetchGitBranches, switchGitBranch, revertToCommit, switchToHead } from "../services/api";
     import type { Project, ExecutionResult, GitLogEntry } from "$lib/types";
-    import { Loader2, FolderOpen, GitBranch, Play, Edit } from "lucide-svelte";
+    import { Loader2, FolderOpen, GitBranch, Play, Edit, GitBranchIcon, Check, GitCommit, PenTool, ArrowUp, RotateCcw } from "lucide-svelte";
 
     export let project: Project;
     export let onEdit: () => void;
 
     let executionResults: ExecutionResult[] | null = null;
     let gitLog: GitLogEntry[] | null = null;
+    let gitBranches: string[] | null = null;
+    let activeBranch: string | null = null;
     let isExecuting = false;
     let executionError: string | null = null;
     let isLoadingGitLog = false;
+    let isLoadingGitBranches = false;
+    let isSwitchingBranch = false;
     let gitLogError: string | null = null;
+    let gitBranchesError: string | null = null;
+    let branchSwitchError: string | null = null;
     let previousProjectId: number | null = null;
+    let isRevertingCommit = false;
+    let revertError: string | null = null;
 
     interface ErrorResponse {
         message: string;
@@ -30,6 +39,9 @@
         executionError = null;
         gitLog = null;
         gitLogError = null;
+        gitBranches = null;
+        gitBranchesError = null;
+        branchSwitchError = null;
     }
 
     $: if (project.id !== previousProjectId) {
@@ -90,6 +102,8 @@
         isLoadingGitLog = true;
         gitLogError = null;
         gitLog = null;
+        gitBranches = null; // Clear branches when loading log
+        gitBranchesError = null;
         try {
             // @ts-ignore
             gitLog = await fetchGitLog(project.id);
@@ -100,6 +114,70 @@
             isLoadingGitLog = false;
         }
     }
+
+    async function loadGitBranches() {
+        isLoadingGitBranches = true;
+        gitBranchesError = null;
+        gitBranches = null;
+        activeBranch = null;
+        gitLog = null; // Clear log when loading branches
+        gitLogError = null;
+        try {
+            const branchData = await fetchGitBranches(project.id);
+            gitBranches = branchData.branches;
+            activeBranch = branchData.currentBranch;
+        } catch (error) {
+            console.error("Failed to fetch git branches:", error);
+            gitBranchesError = "Failed to load git branches. Please try again.";
+        } finally {
+            isLoadingGitBranches = false;
+        }
+    }
+
+    async function handleBranchSwitch(branch: string) {
+        isSwitchingBranch = true;
+        branchSwitchError = null;
+        try {
+            await switchGitBranch(project.id, branch);
+            activeBranch = branch;
+            await loadGitBranches(); // Refresh the branch list
+        } catch (error) {
+            console.error("Failed to switch branch:", error);
+            branchSwitchError = `Failed to switch to branch ${branch}. Please try again.`;
+        } finally {
+            isSwitchingBranch = false;
+        }
+    }
+
+    async function handleRevertToCommit(commitHash: string) {
+        isRevertingCommit = true;
+        revertError = null;
+        try {
+            await revertToCommit(project.id, commitHash);
+            await loadGitBranches(); // Refresh the branch list and active branch
+        } catch (error) {
+            console.error("Failed to revert to commit:", error);
+            revertError = `Failed to revert to commit ${commitHash}. Please try again.`;
+        } finally {
+            isRevertingCommit = false;
+        }
+    }
+
+    async function handleSwitchToHead(branch: string) {
+        isSwitchingBranch = true;
+        branchSwitchError = null;
+        try {
+            await switchToHead(project.id, branch);
+            activeBranch = branch;
+            await loadGitBranches(); // Refresh the branch list
+        } catch (error) {
+            console.error("Failed to switch to branch head:", error);
+            branchSwitchError = `Failed to switch to head of branch ${branch}. Please try again.`;
+        } finally {
+            isSwitchingBranch = false;
+        }
+    }
+
 </script>
 
 <div
@@ -153,19 +231,6 @@
             <StageList stages={project.stagingConfigs.stages} />
         </div>
 
-        <button
-            class="bg-blue-500 text-white px-6 py-3 rounded-full hover:bg-blue-600 mt-6 disabled:bg-blue-300 transition-colors duration-200 flex items-center justify-center w-full md:w-auto"
-            on:click={handleExecuteStaging}
-            disabled={isExecuting}
-        >
-            {#if isExecuting}
-                <Loader2 class="animate-spin mr-2" size={20} />
-                Executing Staging...
-            {:else}
-                <Play class="mr-2" size={20} />
-                Execute Staging
-            {/if}
-        </button>
     {:else}
         <p
             class="text-yellow-600 bg-yellow-100 p-4 rounded-lg"
@@ -224,19 +289,6 @@
         </div>
     {/if}
 
-    <button
-        class="bg-green-500 text-white px-6 py-3 rounded-full hover:bg-green-600 mt-6 disabled:bg-green-300 transition-colors duration-200 flex items-center justify-center w-full md:w-auto"
-        on:click={loadGitLog}
-        disabled={isLoadingGitLog}
-    >
-        {#if isLoadingGitLog}
-            <Loader2 class="animate-spin mr-2" size={20} />
-            Loading Git Log...
-        {:else}
-            <GitBranch class="mr-2" size={20} />
-            Load Git Log
-        {/if}
-    </button>
 
     {#if gitLogError}
         <div
@@ -248,9 +300,149 @@
         </div>
     {/if}
 
-    {#if gitLog}
-        <div class="mt-6" in:fly={{ y: 20, duration: 300 }}>
-            <GitLog {gitLog} />
+    <div class="mt-6 bg-gray-100 rounded-lg p-4" in:fly={{ y: 20, duration: 300 }}>
+        <h3 class="text-lg font-semibold mb-3 flex items-center">
+            <PenTool class="mr-2 text-gray-600" size={20} />
+            Project Toolbox
+        </h3>
+        <div class="flex flex-wrap gap-3">
+            <button
+                class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 disabled:bg-blue-300 transition-colors duration-200 flex items-center justify-center"
+                on:click={handleExecuteStaging}
+                disabled={isExecuting || !hasStagingConfig}
+            >
+                {#if isExecuting}
+                    <Loader2 class="animate-spin mr-2" size={18} />
+                    Executing...
+                {:else}
+                    <Play class="mr-2" size={18} />
+                    Execute Staging
+                {/if}
+            </button>
+
+            <button
+                class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 disabled:bg-green-300 transition-colors duration-200 flex items-center justify-center"
+                on:click={loadGitLog}
+                disabled={isLoadingGitLog || isLoadingGitBranches}
+            >
+                {#if isLoadingGitLog}
+                    <Loader2 class="animate-spin mr-2" size={18} />
+                    Loading...
+                {:else}
+                    <GitCommit class="mr-2" size={18} />
+                    Load Git Log
+                {/if}
+            </button>
+
+            <button
+                class="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 disabled:bg-purple-300 transition-colors duration-200 flex items-center justify-center"
+                on:click={loadGitBranches}
+                disabled={isLoadingGitBranches || isLoadingGitLog}
+            >
+                {#if isLoadingGitBranches}
+                    <Loader2 class="animate-spin mr-2" size={18} />
+                    Loading...
+                {:else}
+                    <GitBranch class="mr-2" size={18} />
+                    Load Branches
+                {/if}
+            </button>
+
+            <!-- Additional tools can be added here in the future -->
+        </div>
+    </div>
+
+
+    {#if gitLogError}
+        <div
+            class="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg"
+            in:fly={{ y: 20, duration: 300 }}
+        >
+            <p class="font-bold">Error:</p>
+            <p>{gitLogError}</p>
         </div>
     {/if}
+
+    {#if gitBranchesError}
+        <div
+            class="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg"
+            in:fly={{ y: 20, duration: 300 }}
+        >
+            <p class="font-bold">Error:</p>
+            <p>{gitBranchesError}</p>
+        </div>
+    {/if}
+
+    {#if branchSwitchError}
+        <div
+            class="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg"
+            in:fly={{ y: 20, duration: 300 }}
+        >
+            <p class="font-bold">Error:</p>
+            <p>{branchSwitchError}</p>
+        </div>
+    {/if}
+
+    {#if gitLog}
+        <GitLog {gitLog} onRevertCommit={handleRevertToCommit} />
+    {/if}
+
+    {#if revertError}
+        <div
+            class="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg"
+            in:fly={{ y: 20, duration: 300 }}
+        >
+            <p class="font-bold">Error:</p>
+            <p>{revertError}</p>
+        </div>
+    {/if}
+
+    {#if gitBranches}
+        <div class="mt-6" in:fly={{ y: 20, duration: 300 }}>
+            <h3 class="text-xl font-semibold mb-2">Git Branches</h3>
+            <ul class="space-y-2">
+                {#each gitBranches as branch}
+                    <li class="flex items-center justify-between bg-gray-100 p-2 rounded">
+                        <span class="font-mono flex items-center">
+                            {#if branch === activeBranch}
+                                <Check size={16} class="text-green-500 mr-2" />
+                            {/if}
+                            {branch}
+                        </span>
+                        <div class="flex space-x-2">
+                            {#if branch !== activeBranch}
+                                <button
+                                    class="bg-blue-500 hover:bg-blue-600 text-white text-sm font-bold py-1 px-3 rounded-full transition-colors duration-200 flex items-center"
+                                    on:click={() => handleBranchSwitch(branch)}
+                                    disabled={isSwitchingBranch}
+                                >
+                                    {#if isSwitchingBranch}
+                                        <Loader2 class="animate-spin mr-1" size={14} />
+                                        Switching...
+                                    {:else}
+                                        <GitBranchIcon size={14} class="mr-1" />
+                                        Switch
+                                    {/if}
+                                </button>
+                            {/if}
+                            <button
+                                class="bg-green-500 hover:bg-green-600 text-white text-sm font-bold py-1 px-3 rounded-full transition-colors duration-200 flex items-center"
+                                on:click={() => handleSwitchToHead(branch)}
+                                disabled={isSwitchingBranch}
+                            >
+                                {#if isSwitchingBranch}
+                                    <Loader2 class="animate-spin mr-1" size={14} />
+                                    Switching...
+                                {:else}
+                                    <ArrowUp size={14} class="mr-1" />
+                                    To Head
+                                {/if}
+                            </button>
+                        </div>
+                    </li>
+                {/each}
+            </ul>
+        </div>
+    {/if}
+
 </div>

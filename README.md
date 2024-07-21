@@ -1,129 +1,150 @@
-# GUM, another Deployment Management Panel
+# Deployment Management Panel
 
-## Table of Contents
-1. [Introduction](#introduction)
-2. [Features](#features)
-3. [Technologies Used](#technologies-used)
-4. [Getting Started](#getting-started)
-   - [Prerequisites](#prerequisites)
-   - [Installation](#installation)
-5. [Usage](#usage)
-   - [Creating a New Project](#creating-a-new-project)
-   - [Managing Projects](#managing-projects)
-   - [Executing Staging](#executing-staging)
-6. [Project Structure](#project-structure)
-7. [API Endpoints](#api-endpoints)
-8. [Contributing](#contributing)
-9. [Testing](#testing)
-10. [Deployment](#deployment)
-11. [Troubleshooting](#troubleshooting)
-12. [License](#license)
-13. [Contact](#contact)
-
-## Introduction
-
-GUM ( Deployment Management Panel ) is a web-based application designed to streamline the process of managing and executing deployment projects. It provides an intuitive interface for creating, managing, and executing staging configurations for various projects.
-
-
-![Overview](https://raw.githubusercontent.com/safra36/gum/main/screenshots/overview.png)
-![Project Overview](https://raw.githubusercontent.com/safra36/gum/main/screenshots/project-overview.png)
-![Adding Project](https://raw.githubusercontent.com/safra36/gum/main/screenshots/adding-project.png)
+A powerful web-based tool for managing deployment projects, Git repositories, and executing staging configurations.
 
 ## Features
 
-- Create and manage multiple deployment projects
-- Configure staging settings for each project
-- Execute staging processes with real-time feedback
-- View and manage project details
-- Retrieve and display Git logs for projects
-- Responsive design for desktop and mobile use
-
-## Technologies Used
-
-- Frontend:
-  - Svelte
-  - TypeScript
-  - Tailwind CSS
-  - Lucide Icons
-- Backend:
-  - Node.js
-  - Express.js
-- Database:
-  - SQLite
+- **Project Management**: Create, edit, and view deployment projects
+- **Git Integration**: 
+  - View Git logs
+  - List and switch between branches
+  - Revert to specific commits
+- **Staging Configuration**: Set up and execute multi-stage deployment processes
+- **Real-time Execution**: Run staging configurations and view results in real-time
+- **User-friendly Interface**: Clean, responsive design with intuitive controls
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js (v14.0.0 or later)
-- npm (v6.0.0 or later)
+- Node.js (v16 or later recommended)
+- npm (v6 or later)
+- Git
 
 ### Installation
 
 1. Clone the repository:
    ```
-   git clone https://github.com/safra36/gum.git
+   git clone https://github.com/your-username/deployment-management-panel.git
+   cd deployment-management-panel
    ```
 
-2. Navigate to the project directory:
+2. Install dependencies for both backend and frontend:
    ```
-   cd gum frontend or cd gum backend 
-   ```
+   # Install backend dependencies
+   cd backend
+   npm install
 
-3. Install dependencies:
-   ```
+   # Install frontend dependencies
+   cd ../frontend
    npm install
    ```
 
-4. Set up environment variables:
-   - Create a `.env` file in the root directory
-   - Add your gum backend enpoint URL
+3. Set up environment variables:
+   Create a `.env` file in the frontend directory and add the following:
+   ```
+   PUBLIC_BASE_URL=http://localhost:3000
+   ```
 
-5. Start the development server:
+### Running the Application
+
+The backend and frontend have different running strategies:
+
+#### Backend (GUM)
+
+1. Navigate to the backend directory:
+   ```
+   cd backend
+   ```
+
+2. Start the backend server:
+   ```
+   npm start
+   ```
+   This will run the `ts-node src/main.ts` command, starting the backend server.
+
+#### Frontend
+
+1. Navigate to the frontend directory:
+   ```
+   cd frontend
+   ```
+
+2. For development:
    ```
    npm run dev
    ```
+   This will start the development server with hot-reloading.
 
-## Usage
+3. For production build:
+   ```
+   npm run build
+   npm run preview
+   ```
+   This will create a production build and start a server to preview it.
+
+4. Open your browser and navigate to the URL provided by the frontend server (usually `http://localhost:5173` for development or `http://localhost:4173` for preview)
+
+## Usage Guide
 
 ### Creating a New Project
 
-1. Click on the "New Project" button in the navigation bar.
+1. Click the "New Project" button in the top right corner
 2. Fill in the project details:
-   - Project Title
+   - Title
    - Working Directory
-   - Staging Configuration (Route and Arguments)
-   - Add one or more Stages with Script and Stage ID
-3. Click "Create Project" to save the new project.
+   - Staging Configuration (Route, Arguments, Stages)
+3. Click "Create Project"
 
-### Managing Projects
+### Viewing Project Details
 
-- View all projects in the sidebar
-- Click on a project to view its details
-- Edit project details (not implemented)
-- Delete projects (not implemented)
+1. Select a project from the list on the left
+2. The main panel will display project details, including:
+   - Working Directory
+   - Staging Configuration
+   - Git information
 
 ### Executing Staging
 
-1. Select a project from the sidebar
-2. Review the staging configuration and stages
-3. Click "Execute Staging" to run the staging process
-4. View real-time results of the staging execution
+1. Open a project
+2. Click the "Execute Staging" button in the Project Toolbox
+3. View real-time execution results
+
+### Managing Git
+
+1. Open a project
+2. Use the "Load Git Log" and "Load Branches" buttons in the Project Toolbox
+3. To switch branches, click the "Switch" button next to a branch name
+4. To revert to a specific commit, find the commit in the Git Log and click "Revert"
+
+### Editing a Project
+
+1. Open a project
+2. Click the "Edit Project" button
+3. Modify the project details
+4. Click "Update Project" to save changes
+
+## Troubleshooting
+
+- If you encounter connection issues, ensure the backend server is running on port 3000 and the `PUBLIC_BASE_URL` in your frontend `.env` file is set to `http://localhost:3000`
+- For Git-related errors, verify that the working directory is a valid Git repository
+- Check the browser console and server logs for detailed error messages
+- If you're having issues with TypeORM, you can use the `typeorm` script in the backend: `npm run typeorm -- [TypeORM CLI commands]`
+
+## Development
+
+- Backend uses TypeScript with Express and TypeORM
+- Frontend is built with SvelteKit and uses Tailwind CSS for styling
+- Lucide icons are used for the UI
 
 ## Contributing
 
-We welcome contributions to the Deployment Management Panel! Please follow these steps to contribute:
-
-1. Fork the repository
-2. Create a new branch: `git checkout -b feature/your-feature-name`
-3. Make your changes and commit them: `git commit -m 'Add some feature'`
-4. Push to the branch: `git push origin feature/your-feature-name`
-5. Submit a pull request
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for more details.
 
 ## License
 
-This project is licensed under the MIT License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Contact
+## Support
 
-For any questions or concerns, please open an issue on the GitHub repository.
+If you need help or have any questions, please open an issue on our GitHub repository.
