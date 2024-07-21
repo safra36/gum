@@ -25,7 +25,7 @@ A powerful web-based tool for managing deployment projects, Git repositories, an
 
 1. Clone the repository:
    ```
-   git clone https://github.com/your-username/gum.git
+   git clone https://github.com/safra36/gum.git
    cd gum
    ```
 
