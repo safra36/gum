@@ -25,8 +25,8 @@ A powerful web-based tool for managing deployment projects, Git repositories, an
 
 1. Clone the repository:
    ```
-   git clone https://github.com/your-username/deployment-management-panel.git
-   cd deployment-management-panel
+   git clone https://github.com/your-username/gum.git
+   cd gum
    ```
 
 2. Install dependencies for both backend and frontend:
