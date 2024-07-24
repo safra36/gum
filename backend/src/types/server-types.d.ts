@@ -30,4 +30,5 @@ export interface ProjectDTO {
     title: string;
     working_dir: string;
     stagingConfigs: StagingConfigDTO;
+    cronJob: string | null; // Added cronJob field
 }

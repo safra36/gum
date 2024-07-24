@@ -7,6 +7,7 @@ import { ServerConfig, RouteConfig, ProjectDTO } from "../types/server-types";
 import express, { Request, Response, NextFunction } from 'express';
 import cors from "cors"
 import { GitLogEntry } from "../types/executor.service";
+import { CronJobManager } from "../services/cronjob-manager.service";
 
 export class APIServer {
     
@@ -16,10 +17,12 @@ export class APIServer {
     private server: any;
     private projectService: ProjectService;
     private executorService: ExecutorService;
+    private cronJobManager: CronJobManager;
 
     private constructor() {
         this.app = express();
         this.projectService = ProjectService.getInstance();
+        this.cronJobManager = CronJobManager.getInstance();
         this.executorService = ExecutorService.getInstance();
         this.setupMiddleware();
     }
@@ -210,7 +213,8 @@ export class APIServer {
                         route: req.body.stagingConfigs.route,
                         args: req.body.stagingConfigs.args,
                         stages: req.body.stagingConfigs.stages
-                    }
+                    },
+                    cronJob: req.body.cronJob
                 };
                 const updatedProject = await this.projectService.updateProject(projectId, updateData);
                 
@@ -319,10 +323,104 @@ export class APIServer {
                 });
             }
         });
-        
+
+
+
+        this.app.post('/project/:id/cron', this.authenticateRequest, async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+                const { cronExpression } = req.body;
+
+                if (!cronExpression) {
+                    return res.status(400).json({ error: "Cron expression is required" });
+                }
+
+                // Get the project
+                const project = await this.projectService.getProjectById(projectId);
+                if (!project) {
+                    return res.status(404).json({ error: "Project not found" });
+                }
+
+                // Prepare update data
+                const updateData: UpdateProjectDTO = {
+                    cronJob: cronExpression
+                };
+
+                // Update the project with the new cron expression
+                const updatedProject = await this.projectService.updateProject(projectId, updateData);
+
+                // Update the cron job using CronJobManager
+                this.cronJobManager.updateCronJob(updatedProject);
+
+                const projectDTO = this.projectToDTO(updatedProject);
+                res.status(200).json({ message: 'Cron job set successfully', project: projectDTO });
+            } catch (error) {
+                console.error('Error setting cron job:', error);
+                res.status(500).json({
+                    error: "Failed to set cron job",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        // New route to get the current cron job for a project
+        this.app.get('/project/:id/cron', this.authenticateRequest, async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+                const cronJob = await this.projectService.getCronJob(projectId);
+                
+                res.status(200).json({ cronJob });
+            } catch (error) {
+                res.status(500).json({
+                    error: "Failed to get cron job",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+
+
+        this.app.delete('/project/:id/cron', this.authenticateRequest, async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+
+                // Get the project
+                const project = await this.projectService.getProjectById(projectId);
+                if (!project) {
+                    return res.status(404).json({ error: "Project not found" });
+                }
+
+                // Prepare update data to remove cron job
+                const updateData: UpdateProjectDTO = {
+                    cronJob: null
+                };
+
+                // Update the project to remove the cron job
+                const updatedProject = await this.projectService.updateProject(projectId, updateData);
+
+                // Stop the cron job using CronJobManager
+                this.cronJobManager.stopCronJob(projectId);
+
+                const projectDTO = this.projectToDTO(updatedProject);
+                res.status(200).json({ message: 'Cron job removed successfully', project: projectDTO });
+            } catch (error) {
+                console.error('Error removing cron job:', error);
+                res.status(500).json({
+                    error: "Failed to remove cron job",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+
+
+
     }
 
     private projectToDTO(project: Project): ProjectDTO {
+
+        console.log(project);
+        
         return {
             id: project.id,
             title: project.title,
@@ -336,7 +434,8 @@ export class APIServer {
                     script: stage.script,
                     stageId: stage.stageId
                 }))
-            }
+            },
+            cronJob: project.cronJob // Add this line to include the cronJob in the DTO
         };
     }
 

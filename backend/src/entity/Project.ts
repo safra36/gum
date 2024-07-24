@@ -1,10 +1,9 @@
 import { Column, Entity, OneToOne, PrimaryGeneratedColumn } from "typeorm";
 import { StagingConfig } from "./StagingConfig";
 
-
-
 @Entity()
 export class Project {
+
     @PrimaryGeneratedColumn()
     id: number;
 
@@ -16,4 +15,8 @@ export class Project {
 
     @OneToOne(() => StagingConfig, stagingConfig => stagingConfig.project, { cascade: true })
     stagingConfig: StagingConfig;
+
+    @Column({ nullable: true })
+    cronJob: string;
+    
 }

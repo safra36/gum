@@ -2,10 +2,15 @@ import { AppDataSource } from "../data-source";
 import { Project } from "../entity/Project";
 import { StagingConfig } from "../entity/StagingConfig";
 import { Stage } from "../entity/Stage";
-import { CreateProject, CreateStagingConfig, CreateStage, UpdateStageDTO, UpdateProjectDTO } from "../types/project.service";
+import { CreateProject, CreateStagingConfig, CreateStage, UpdateStageDTO, UpdateProjectDTO, ExecutionResult } from "../types/project.service";
+import { CronJob } from "cron";
+import { ExecutorService } from "./executor.service";
+import { CronJobManager } from "./cronjob-manager.service";
 
 export class ProjectService {
+
     private static instance: ProjectService;
+    private cronJobs: Map<number, CronJob> = new Map();
 
     private constructor() { }
 
@@ -94,40 +99,47 @@ export class ProjectService {
             throw new Error('Project not found');
         }
 
-        // Update project details
-        project.title = updateData.title;
-        project.working_dir = updateData.working_dir;
+        // Update basic project details
+        if (updateData.title !== undefined) project.title = updateData.title;
+        if (updateData.working_dir !== undefined) project.working_dir = updateData.working_dir;
 
         // Update staging config
         if (updateData.stagingConfig) {
             if (!project.stagingConfig) {
                 project.stagingConfig = new StagingConfig();
             }
-            project.stagingConfig.route = updateData.stagingConfig.route;
-            project.stagingConfig.args = updateData.stagingConfig.args;
+            if (updateData.stagingConfig.route !== undefined) project.stagingConfig.route = updateData.stagingConfig.route;
+            if (updateData.stagingConfig.args !== undefined) project.stagingConfig.args = updateData.stagingConfig.args;
 
             // Update stages
-            const updatedStages = updateData.stagingConfig.stages.map(stageData => {
-                const existingStage = project.stagingConfig.stages.find(s => s.id === stageData.id);
-                if (existingStage) {
-                    existingStage.script = stageData.script;
-                    existingStage.stageId = stageData.stageId;
-                    return existingStage;
-                } else {
-                    const newStage = new Stage();
-                    newStage.script = stageData.script;
-                    newStage.stageId = stageData.stageId;
-                    newStage.stagingConfig = project.stagingConfig;
-                    newStage.created_at = Date.now()
-                    return newStage;
-                }
-            });
+            if (updateData.stagingConfig.stages) {
+                project.stagingConfig.stages = updateData.stagingConfig.stages.map(stageData => {
+                    const existingStage = project.stagingConfig.stages.find(s => s.id === stageData.id);
+                    if (existingStage) {
+                        if (stageData.script !== undefined) existingStage.script = stageData.script;
+                        if (stageData.stageId !== undefined) existingStage.stageId = stageData.stageId;
+                        return existingStage;
+                    } else {
+                        const newStage = new Stage();
+                        newStage.script = stageData.script;
+                        newStage.stageId = stageData.stageId;
+                        newStage.stagingConfig = project.stagingConfig;
+                        return newStage;
+                    }
+                });
+            }
+        }
 
-            project.stagingConfig.stages = updatedStages;
+        // Update cron job
+        if (updateData.cronJob !== undefined) {
+            project.cronJob = updateData.cronJob;
+            const cronJobManager = CronJobManager.getInstance();
+            cronJobManager.updateCronJob(project);
         }
 
         return await projectRepository.save(project);
     }
+
 
     public async updateStage(stageId: number, updateData: UpdateStageDTO): Promise<Stage> {
         const stageRepository = AppDataSource.getRepository(Stage);
@@ -166,5 +178,154 @@ export class ProjectService {
                 }
             }
         });
+    }
+
+
+    public async setCronJob(projectId: number, cronExpression: string): Promise<Project> {
+        const projectRepository = AppDataSource.getRepository(Project);
+        const project = await projectRepository.findOne({ where: { id: projectId }, relations : {
+
+            stagingConfig : {
+                stages : true
+            }
+
+        } });
+
+        if (!project) {
+            throw new Error('Project not found');
+        }
+
+        project.cronJob = cronExpression;
+        const updatedProject = await projectRepository.save(project);
+
+        // Stop existing cron job if it exists
+        this.stopCronJob(projectId);
+
+        // Start new cron job
+        this.startCronJob(updatedProject);
+
+        return updatedProject;
+    }
+
+    public async getCronJob(projectId: number): Promise<string | null> {
+        const projectRepository = AppDataSource.getRepository(Project);
+        const project = await projectRepository.findOne({ where: { id: projectId } });
+
+        if (!project) {
+            throw new Error('Project not found');
+        }
+
+        return project.cronJob;
+    }
+
+    private startCronJob(project: Project): void {
+        if (project.cronJob) {
+            const job = new CronJob(project.cronJob, () => {
+                // Execute the project's staging config
+                this.executeProjectStaging(project.id);
+            });
+
+            job.start();
+            this.cronJobs.set(project.id, job);
+        }
+    }
+
+    private stopCronJob(projectId: number): void {
+        const existingJob = this.cronJobs.get(projectId);
+        if (existingJob) {
+            existingJob.stop();
+            this.cronJobs.delete(projectId);
+        }
+    }
+
+    public async executeProjectStaging(projectId: number): Promise<void> {
+        console.log(`Executing staging for project ${projectId}`);
+        
+        try {
+            // 1. Fetch the project
+            const project: Project = await this.getProjectById(projectId);
+            if (!project) {
+                throw new Error(`Project with id ${projectId} not found`);
+            }
+
+            // 2. Get the staging configuration
+            const stagingConfig = project.stagingConfig;
+            if (!stagingConfig) {
+                throw new Error(`No staging configuration found for project ${projectId}`);
+            }
+
+            // 3. Execute each stage in the staging configuration
+            const executorService = ExecutorService.getInstance();
+            const results: ExecutionResult[] = [];
+            let failed = false;
+
+            for (const stage of stagingConfig.stages) {
+                if (failed) {
+                    results.push({
+                        stageId: stage.stageId,
+                        stdout: "",
+                        stderr: "Skipped due to previous stage failure",
+                        exitCode: null
+                    });
+                } else {
+                    try {
+                        console.log(`Executing stage ${stage.stageId} for project ${projectId}`);
+                        const result = await executorService.executeScript(stage.script, stagingConfig.args);
+                        results.push({
+                            stageId: stage.stageId,
+                            ...result
+                        });
+
+                        if (result.exitCode !== 0) {
+                            failed = true;
+                        }
+                    } catch (error) {
+                        results.push({
+                            stageId: stage.stageId,
+                            stdout: "",
+                            stderr: error instanceof Error ? error.message : String(error),
+                            exitCode: 1
+                        });
+                        failed = true;
+                    }
+                }
+            }
+
+            // 4. Log the results
+            console.log(`Staging execution completed for project ${projectId}`);
+            console.log(`Success: ${!failed}`);
+            console.log(`Results:`, JSON.stringify(results, null, 2));
+
+            // 5. Optionally, you could store these results in a database or send notifications
+            // await this.storeExecutionResults(projectId, results);
+            // await this.sendNotification(projectId, !failed, results);
+
+        } catch (error) {
+            console.error(`Error executing staging for project ${projectId}:`, error);
+            // Optionally, you could send an error notification here
+            // await this.sendErrorNotification(projectId, error);
+        }
+    }
+
+    public async removeCronJob(projectId: number): Promise<Project> {
+        const projectRepository = AppDataSource.getRepository(Project);
+        const project = await projectRepository.findOne({ where: { id: projectId }, relations : {
+            stagingConfig : {
+                stages : true
+            }
+        } });
+
+        if (!project) {
+            throw new Error('Project not found');
+        }
+
+        project.cronJob = null;
+        const updatedProject = await projectRepository.save(project);
+
+        // Stop the cron job
+        const cronJobManager = CronJobManager.getInstance();
+        cronJobManager.stopCronJob(projectId);
+
+        return updatedProject;
     }
 }

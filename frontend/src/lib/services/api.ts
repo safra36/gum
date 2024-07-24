@@ -130,3 +130,38 @@ export async function switchToHead(projectId: number, branch: string): Promise<v
         throw new Error('Failed to switch to branch head');
     }
 }
+
+
+export async function setCronJob(projectId: number, cronExpression: string): Promise<void> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/cron`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ cronExpression }),
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to set cron job');
+    }
+}
+
+
+export async function getCronJob(projectId: number): Promise<string> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/cron`);
+    if (!response.ok) {
+        throw new Error('Failed to get cron job');
+    }
+    const data = await response.json();
+    return data.cronJob;
+}
+
+export async function removeCronJob(projectId: number): Promise<void> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/cron`, {
+        method: 'DELETE',
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to remove cron job');
+    }
+}

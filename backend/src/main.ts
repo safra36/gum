@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { ProjectService } from "./services/project.service";
 import { ExecutorService } from "./services/executor.service";
 import { Request, Response } from 'express';
+import { CronJobManager } from "./services/cronjob-manager.service";
 
 // Load environment variables
 dotenv.config();
@@ -13,6 +14,7 @@ async function getDynamicRoutes(): Promise<RouteConfig[]> {
     const projectService = ProjectService.getInstance();
     const executorService = ExecutorService.getInstance();
     const projects = await projectService.getAllProjects();
+    
     
     return projects.map(project => {
         const config = project.stagingConfig;
@@ -74,6 +76,9 @@ async function main() {
         // Initialize database connection
         await AppDataSource.initialize();
         console.log("Database connection has been established successfully.");
+
+        const cronJobManager = CronJobManager.getInstance();
+        await cronJobManager.initializeCronJobs();
 
         // Fetch dynamic routes from the database
         const dynamicRoutes = await getDynamicRoutes();

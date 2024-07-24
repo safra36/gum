@@ -1,12 +1,13 @@
 <script lang="ts">
 
-import { onMount, afterUpdate } from "svelte";
+
+    import { onMount, afterUpdate } from "svelte";
     import { fade, fly } from "svelte/transition";
     import StageList from "./StageList.svelte";
     import GitLog from "./GitLog.svelte";
-    import { executeStaging, fetchGitLog, fetchGitBranches, switchGitBranch, revertToCommit, switchToHead } from "../services/api";
+    import { executeStaging, fetchGitLog, fetchGitBranches, switchGitBranch, revertToCommit, switchToHead, setCronJob, getCronJob, removeCronJob } from "../services/api";
     import type { Project, ExecutionResult, GitLogEntry } from "$lib/types";
-    import { Loader2, FolderOpen, GitBranch, Play, Edit, GitBranchIcon, Check, GitCommit, PenTool, ArrowUp, RotateCcw } from "lucide-svelte";
+    import { Loader2, FolderOpen, GitBranch, Play, Edit, GitBranchIcon, Check, GitCommit, PenTool, ArrowUp, RotateCcw, Clock, Info, Trash2 } from "lucide-svelte";
 
     export let project: Project;
     export let onEdit: () => void;
@@ -27,12 +28,47 @@ import { onMount, afterUpdate } from "svelte";
     let isRevertingCommit = false;
     let revertError: string | null = null;
 
+
+    let showCronJobModal = false;
+    let cronExpression = "";
+    let isSettingCronJob = false;
+    let isLoadingCronJob = false;
+    let isRemovingCronJob = false;
+    let cronJobError: string | null = null;
+
+    $: isValidCron = validateCronExpression(cronExpression);
+
+
+    onMount(async () => {
+        await loadCronJob();
+    });
+
+
+    const cronPresets = [
+        { label: "Every 15 minutes", value: "0 */15 * * * *" },
+        { label: "Hourly", value: "0 0 * * * *" },
+        { label: "Daily at midnight", value: "0 0 0 * * *" },
+        { label: "Weekly on Sunday", value: "0 0 0 * * 0" },
+        { label: "Monthly on the 1st", value: "0 0 0 1 * *" },
+    ];
+
+
     interface ErrorResponse {
         message: string;
         project: string;
         success: boolean;
         results: ExecutionResult[];
     }
+
+
+
+    function selectPreset(preset: string) {
+        cronExpression = preset;
+    }
+
+    
+
+
 
     function clearResults() {
         executionResults = null;
@@ -176,6 +212,66 @@ import { onMount, afterUpdate } from "svelte";
         } finally {
             isSwitchingBranch = false;
         }
+    }
+
+
+    async function loadCronJob() {
+        isLoadingCronJob = true;
+        cronJobError = null;
+        try {
+            const cronJob = await getCronJob(project.id);
+            cronExpression = cronJob || "";
+            project = { ...project, cronJob };  // Update the project object
+        } catch (error) {
+            cronJobError = "Failed to load cron job";
+            console.error("Failed to load cron job:", error);
+        } finally {
+            isLoadingCronJob = false;
+        }
+    }
+
+    async function handleSetCronJob() {
+        isSettingCronJob = true;
+        cronJobError = null;
+        try {
+            await setCronJob(project.id, cronExpression);
+            // Update the project's cronJob field locally
+            project = { ...project, cronJob: cronExpression };
+            showCronJobModal = false;
+        } catch (error: unknown) {
+            if (error instanceof Error) {
+                cronJobError = `Failed to set cron job: ${error.message}`;
+            } else {
+                cronJobError = 'Failed to set cron job: An unknown error occurred';
+            }
+        } finally {
+            isSettingCronJob = false;
+        }
+    }
+
+    async function handleRemoveCronJob() {
+        isRemovingCronJob = true;
+        cronJobError = null;
+        try {
+            await removeCronJob(project.id);
+            project = { ...project, cronJob: null };
+            cronExpression = "";
+            showCronJobModal = false;
+        } catch (error) {
+            if (error instanceof Error) {
+                cronJobError = `Failed to remove cron job: ${error.message}`;
+            } else {
+                cronJobError = 'Failed to remove cron job: An unknown error occurred';
+            }
+        } finally {
+            isRemovingCronJob = false;
+        }
+    }
+
+    function validateCronExpression(expression: string): boolean {
+        // This regex allows for 6-field cron expressions (with seconds)
+        const regex = /^(\*|([0-9]|[1-5][0-9])|(\*\/[0-9]+))(\s+(\*|([0-9]|[1-5][0-9])|(\*\/[0-9]+))){5}$/;
+        return regex.test(expression.trim());
     }
 
 </script>
@@ -348,6 +444,14 @@ import { onMount, afterUpdate } from "svelte";
                 {/if}
             </button>
 
+            <button
+                class="bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-600 transition-colors duration-200 flex items-center justify-center"
+                on:click={() => showCronJobModal = true}
+            >
+                <Clock class="mr-2" size={18} />
+                Set Cron Job
+            </button>
+
             <!-- Additional tools can be added here in the future -->
         </div>
     </div>
@@ -445,4 +549,90 @@ import { onMount, afterUpdate } from "svelte";
         </div>
     {/if}
 
+    
+
+
 </div>
+
+{#if showCronJobModal}
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" in:fade={{ duration: 200 }}>
+        <div class="bg-white rounded-lg p-6 w-full max-w-md" in:fly={{ y: 20, duration: 300 }}>
+            <h2 class="text-2xl font-bold mb-4 flex items-center">
+                <Clock class="mr-2 text-indigo-500" size={24} />
+                {project.cronJob ? 'Update Cron Job' : 'Set Cron Job'}
+            </h2>
+            <p class="mb-4 text-gray-600">
+                {#if project.cronJob}
+                    Current cron job: <span class="font-mono bg-gray-100 px-2 py-1 rounded">{project.cronJob}</span>
+                {:else}
+                    Select a preset or enter a custom cron expression to schedule automatic project execution.
+                {/if}
+            </p>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Presets:</label>
+                <div class="flex flex-wrap gap-2">
+                    {#each cronPresets as preset}
+                        <button
+                            class="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm hover:bg-indigo-200 transition-colors duration-200"
+                            on:click={() => selectPreset(preset.value)}
+                        >
+                            {preset.label}
+                        </button>
+                    {/each}
+                </div>
+            </div>
+            <div class="mb-4">
+                <label for="cronExpression" class="block text-sm font-medium text-gray-700 mb-2">Cron Expression:</label>
+                <input
+                    id="cronExpression"
+                    type="text"
+                    bind:value={cronExpression}
+                    placeholder="Enter cron expression (e.g. 0 */15 * * * *)"
+                    class="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500 transition-all duration-200 {isValidCron ? 'border-green-500' : 'border-red-500'}"
+                />
+                <p class="mt-1 text-sm text-gray-500 flex items-center">
+                    <Info size={14} class="mr-1" />
+                    Format: seconds minutes hours day-of-month month day-of-week
+                </p>
+            </div>
+            {#if cronJobError}
+                <p class="text-red-500 mb-4">{cronJobError}</p>
+            {/if}
+            <div class="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2">
+                <button
+                    class="w-full sm:w-auto px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors duration-200"
+                    on:click={() => showCronJobModal = false}
+                >
+                    Cancel
+                </button>
+                {#if project.cronJob}
+                    <button
+                        class="w-full sm:w-auto px-4 py-2 border border-red-500 text-red-500 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:hover:bg-transparent transition-colors duration-200 flex items-center justify-center"
+                        on:click={handleRemoveCronJob}
+                        disabled={isRemovingCronJob || isSettingCronJob}
+                    >
+                        {#if isRemovingCronJob}
+                            <Loader2 class="animate-spin mr-2" size={18} />
+                            Removing...
+                        {:else}
+                            <Trash2 class="mr-2" size={18} />
+                            Remove Cron Job
+                        {/if}
+                    </button>
+                {/if}
+                <button
+                    class="w-full sm:w-auto px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 disabled:opacity-50 transition-colors duration-200 flex items-center justify-center"
+                    on:click={handleSetCronJob}
+                    disabled={!isValidCron || isSettingCronJob || isRemovingCronJob}
+                >
+                    {#if isSettingCronJob}
+                        <Loader2 class="animate-spin mr-2" size={18} />
+                        Setting...
+                    {:else}
+                        {project.cronJob ? 'Update' : 'Set'} Cron Job
+                    {/if}
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
