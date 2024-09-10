@@ -6,6 +6,7 @@ import { ProjectService } from "./services/project.service";
 import { ExecutorService } from "./services/executor.service";
 import { Request, Response } from 'express';
 import { CronJobManager } from "./services/cronjob-manager.service";
+import { StateManager } from "./utils/StateManager";
 
 // Load environment variables
 dotenv.config();
@@ -22,6 +23,22 @@ async function getDynamicRoutes(): Promise<RouteConfig[]> {
             method: 'get' as const,
             route: config.route,
             handler: async (req: Request, res: Response) => {
+
+                if(StateManager.isExecuting) {
+
+                    res.status(400).json({
+                        message: `Another script is being executed, please retry again later`,
+                        project: project.title,
+                        success: false,
+                        results: []
+                    });
+
+                    return;
+
+                }
+
+                StateManager.isExecuting = true;
+
                 const results = [];
                 let failed = false;
 
@@ -60,6 +77,7 @@ async function getDynamicRoutes(): Promise<RouteConfig[]> {
                 }
 
                 const status = failed ? 500 : 200;
+                StateManager.isExecuting = false;
                 res.status(status).json({
                     message: `Executed route: ${config.route}`,
                     project: project.title,

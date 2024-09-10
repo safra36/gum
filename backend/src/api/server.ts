@@ -8,6 +8,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from "cors"
 import { GitLogEntry } from "../types/executor.service";
 import { CronJobManager } from "../services/cronjob-manager.service";
+import { StateManager } from "../utils/StateManager";
 
 export class APIServer {
     
@@ -59,6 +60,23 @@ export class APIServer {
                 method: 'get',
                 route: config.route,
                 handler: async (req: Request, res: Response) => {
+
+
+                    if(StateManager.isExecuting) {
+
+                        res.status(400).json({
+                            message: `Another script is being executed, please retry again later`,
+                            project: project.title,
+                            success: false,
+                            results: []
+                        });
+
+                        return;
+    
+                    }
+    
+                    StateManager.isExecuting = true;
+
                     const results = [];
                     let failed = false;
 
@@ -94,6 +112,7 @@ export class APIServer {
                         }
                     }
 
+                    StateManager.isExecuting = false
                     const status = failed ? 500 : 200;
                     res.status(status).json({
                         message: `Executed route: ${config.route}`,
