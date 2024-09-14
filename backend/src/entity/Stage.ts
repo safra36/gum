@@ -17,6 +17,6 @@ export class Stage {
     @ManyToOne(() => StagingConfig, stagingConfig => stagingConfig.stages)
     stagingConfig: StagingConfig;
 
-    @Column()
+    @CreateDateColumn()
     created_at: number;
 }
