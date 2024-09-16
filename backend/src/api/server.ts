@@ -41,6 +41,10 @@ export class APIServer {
         }))
         this.app.use(express.json());
         this.app.use(express.urlencoded({ extended: true }));
+        this.app.use(cors({
+            origin : "*",
+            credentials : true
+        }))
     }
 
     public init(config: ServerConfig): void {
