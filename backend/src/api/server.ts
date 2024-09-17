@@ -1,4 +1,3 @@
-import path from "path";
 import { Project } from "../entity/Project";
 import { ExecutorService } from "../services/executor.service";
 import { ProjectService } from "../services/project.service";
@@ -9,6 +8,9 @@ import cors from "cors"
 import { GitLogEntry } from "../types/executor.service";
 import { CronJobManager } from "../services/cronjob-manager.service";
 import { StateManager } from "../utils/StateManager";
+import { AuthService } from "../authentication/auth";
+import { LoginRequestDto, LoginResponseDto, User } from "../types/authentication";
+import { AuthLevels } from "../authentication/auth.config";
 
 export class APIServer {
     
@@ -19,13 +21,18 @@ export class APIServer {
     private projectService: ProjectService;
     private executorService: ExecutorService;
     private cronJobManager: CronJobManager;
+    private authService : AuthService
 
     private constructor() {
         this.app = express();
         this.projectService = ProjectService.getInstance();
         this.cronJobManager = CronJobManager.getInstance();
         this.executorService = ExecutorService.getInstance();
+        this.authService = AuthService.getInstance();
         this.setupMiddleware();
+
+        console.log(this.authService);
+        
     }
 
     public static getInstance(): APIServer {
@@ -36,14 +43,12 @@ export class APIServer {
     }
 
     private setupMiddleware(): void {
-        this.app.use(cors({
-            origin : "*"
-        }))
         this.app.use(express.json());
         this.app.use(express.urlencoded({ extended: true }));
         this.app.use(cors({
             origin : "*",
-            credentials : true
+            credentials : true,
+            methods : 'GET,HEAD,PUT,PATCH,POST,DELETE'
         }))
     }
 
@@ -143,8 +148,42 @@ export class APIServer {
             res.status(200).json({ status: 'OK' });
         });
 
+
+        this.app.post("/login", async (req : Request, res : Response) => {
+
+            const {
+                password,
+                username
+            } = req.body as LoginRequestDto
+
+            const token = await this.authService.login(username, password);
+
+            if(token) {
+                res.status(200).send(JSON.stringify({
+                    access_token : token
+                } as LoginResponseDto))
+            } else {
+                res.status(401).send();
+            }
+
+        })
+
+
+        this.app.get("/verify", async (req : Request, res : Response) => {
+
+
+            const user_token = req.headers.authorization.split(" ")[1];
+            const user = await this.authService.verifyLogin(user_token);
+            if(user) res.status(200).send();
+            else res.status(401).send();
+
+
+        })
+
         // Project creation route
-        this.app.post('/project', this.authenticateRequest, async (req: Request, res: Response) => {
+        this.app.post('/project', this.authenticateRequest, this.checkAccess(AuthLevels.CreateProject), async (req: Request, res: Response) => {
+
+
             try {
                 const projectData: CreateProject = {
                     title: req.body.title,
@@ -165,7 +204,9 @@ export class APIServer {
         });
 
 
-        this.app.get('/project/:id/branches', this.authenticateRequest, async (req: Request, res: Response) => {
+        this.app.get('/project/:id/branches', this.authenticateRequest, this.checkAccess(AuthLevels.SwitchBranch), async (req: Request, res: Response) => {
+
+
             try {
                 const projectId = parseInt(req.params.id);
                 const project = await this.projectService.getProjectById(projectId);
@@ -187,7 +228,10 @@ export class APIServer {
             }
         });
 
-        this.app.post('/project/:id/switch-branch', this.authenticateRequest, async (req: Request, res: Response) => {
+        this.app.post('/project/:id/switch-branch', this.authenticateRequest, this.checkAccess(AuthLevels.SwitchBranch), async (req: Request, res: Response) => {
+
+
+
             try {
                 const projectId = parseInt(req.params.id);
                 const { branch } = req.body;
@@ -219,14 +263,36 @@ export class APIServer {
             try {
                 const projects = await this.projectService.getAllProjects();
                 const projectDTOs = projects.map(this.projectToDTO);
-                res.status(200).json(projectDTOs);
+
+                const allowed = await this.authService.hasAccess(
+                    req["user"] as User,
+                    AuthLevels.EditProject
+                )
+    
+                let response = (allowed) ? projectDTOs :
+                projectDTOs.map(projectObject => {
+
+                    projectObject.stagingConfigs.stages = projectObject.stagingConfigs.stages.map(stage => ({
+                        id : stage.id,
+                        script : "Hidden",
+                        stageId : stage.stageId
+                    }));
+
+                    projectObject.stagingConfigs.args = projectObject.stagingConfigs.args.map(arg => "Hidden")                    
+
+                    return projectObject;
+                })
+                
+            
+                res.status(200).json(response);
+
             } catch (error) {
                 res.status(500).json({ error: 'Failed to fetch stages', details: error.message });
             }
         });
 
 
-        this.app.put('/project/:projectId', this.authenticateRequest, async (req: Request, res: Response) => {
+        this.app.put('/project/:projectId', this.authenticateRequest, this.checkAccess(AuthLevels.EditProject), async (req: Request, res: Response) => {
             try {
                 const projectId = parseInt(req.params.projectId);
                 const updateData: UpdateProjectDTO = {
@@ -253,7 +319,7 @@ export class APIServer {
         });
 
         // Existing stage update route (you might want to keep this for individual stage updates)
-        this.app.put('/stage/:stageId', this.authenticateRequest, async (req: Request, res: Response) => {
+        this.app.put('/stage/:stageId', this.authenticateRequest, this.checkAccess(AuthLevels.EditProject), async (req: Request, res: Response) => {
             try {
                 const stageId = parseInt(req.params.stageId);
                 const updateData: UpdateStageDTO = {
@@ -272,7 +338,7 @@ export class APIServer {
             }
         });
 
-        this.app.get('/project/:id/gitlog', this.authenticateRequest, async (req: Request, res: Response) => {
+        this.app.get('/project/:id/gitlog', this.authenticateRequest, this.checkAccess(AuthLevels.GetGitLog), async (req: Request, res: Response) => {
             try {
                 const projectId = parseInt(req.params.id);
                 const project = await this.projectService.getProjectById(projectId);
@@ -293,7 +359,7 @@ export class APIServer {
             }
         });
 
-        this.app.post('/project/:id/revert-commit', this.authenticateRequest, async (req: Request, res: Response) => {
+        this.app.post('/project/:id/revert-commit', this.authenticateRequest, this.checkAccess(AuthLevels.RevertCommit), async (req: Request, res: Response) => {
             try {
                 const projectId = parseInt(req.params.id);
                 const { commitHash } = req.body;
@@ -320,7 +386,7 @@ export class APIServer {
             }
         });
 
-        this.app.post('/project/:id/switch-to-head', this.authenticateRequest, async (req: Request, res: Response) => {
+        this.app.post('/project/:id/switch-to-head', this.authenticateRequest, this.checkAccess(AuthLevels.RevertCommit), async (req: Request, res: Response) => {
             try {
                 const projectId = parseInt(req.params.id);
                 const { branch } = req.body;
@@ -349,7 +415,7 @@ export class APIServer {
 
 
 
-        this.app.post('/project/:id/cron', this.authenticateRequest, async (req: Request, res: Response) => {
+        this.app.post('/project/:id/cron', this.authenticateRequest, this.checkAccess(AuthLevels.SetCron), async (req: Request, res: Response) => {
             try {
                 const projectId = parseInt(req.params.id);
                 const { cronExpression } = req.body;
@@ -387,7 +453,7 @@ export class APIServer {
         });
 
         // New route to get the current cron job for a project
-        this.app.get('/project/:id/cron', this.authenticateRequest, async (req: Request, res: Response) => {
+        this.app.get('/project/:id/cron', this.authenticateRequest, this.checkAccess(AuthLevels.SetCron), async (req: Request, res: Response) => {
             try {
                 const projectId = parseInt(req.params.id);
                 const cronJob = await this.projectService.getCronJob(projectId);
@@ -403,7 +469,7 @@ export class APIServer {
 
 
 
-        this.app.delete('/project/:id/cron', this.authenticateRequest, async (req: Request, res: Response) => {
+        this.app.delete('/project/:id/cron', this.authenticateRequest, this.checkAccess(AuthLevels.SetCron), async (req: Request, res: Response) => {
             try {
                 const projectId = parseInt(req.params.id);
 
@@ -462,9 +528,39 @@ export class APIServer {
         };
     }
 
-    private authenticateRequest(req: Request, res: Response, next: NextFunction): void {
+    private async authenticateRequest(req: Request, res: Response, next: NextFunction): Promise<void> {
         // Authentication logic (currently commented out)
-        next();
+
+        const user_token = req.headers?.authorization?.split(" ")[1] || "";
+        const user = await AuthService.getInstance().verifyLogin(user_token);
+        if(user) {
+            req["user"] = user;
+            next();
+        }
+        else res.status(401).json({ error: 'Request failed', details: "login failed" });
+
+        
+    }
+
+
+    private checkAccess(access : AuthLevels) {
+
+        return async (req : Request , res : Response, next : NextFunction) => {
+
+
+            const allowed = await this.authService.hasAccess(
+                req["user"] as User,
+                access
+            )
+
+            if(!allowed) {
+                res.status(401).json({ error: 'Request failed', details: "permission denied" });
+                next(new Error("permission denied"))
+            }
+            next()
+
+        }
+
     }
 
     private setupRoutes(routes: RouteConfig[]): void {

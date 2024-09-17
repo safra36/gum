@@ -1,0 +1,35 @@
+[
+    {
+        "username": "admin",
+        "password": "admin123",
+        "access": [
+            "creating_project",
+            "editing_project",
+            "view_project_code",
+            "execute_project",
+            "get_git_log",
+            "revert_commit",
+            "switch_branch",
+            "set_cron"
+        ]
+    },
+    {
+        "username": "developer",
+        "password": "dev456",
+        "access": [
+            "editing_project",
+            "view_project_code",
+            "execute_project",
+            "get_git_log",
+            "switch_branch"
+        ]
+    },
+    {
+        "username": "viewer",
+        "password": "view789",
+        "access": [
+            "view_project_code",
+            "get_git_log"
+        ]
+    }
+]
