@@ -11,7 +11,7 @@
     } from "lucide-svelte";
     import { fade, fly } from "svelte/transition";
     import type { Project } from "$lib/types";
-    import { PUBLIC_BASE_URL } from "$env/static/public";
+    import { createProject } from "$lib/services/api";
 
     const dispatch = createEventDispatcher<{ projectCreated: Project }>();
 
@@ -49,19 +49,7 @@
         };
 
         try {
-            const response = await fetch(PUBLIC_BASE_URL + "/project", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(projectData),
-            });
-
-            if (!response.ok) {
-                throw new Error("Failed to create project");
-            }
-
-            const result = await response.json();
+            const result = await createProject(projectData);
             dispatch("projectCreated", result.project);
 
             // Reset form
@@ -94,7 +82,7 @@
 
 <form
     on:submit|preventDefault={handleSubmit}
-    class="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8 mb-4 max-w-5xl mx-auto"
+    class="bg-white dark:bg-gray-800 shadow-lg rounded-lg px-8 pt-6 pb-8 mb-4 max-w-5xl mx-auto"
     in:fade={{ duration: 300, delay: 300 }}
 >
     <h2 class="text-3xl font-bold mb-6 text-gray-800 flex items-center">
@@ -187,7 +175,7 @@
             </h4>
             {#each stagingConfig.stages as stage, stageIndex}
                 <div
-                    class="border border-gray-200 p-3 mb-3 rounded-lg bg-white"
+                    class="border border-gray-200 dark:border-gray-600 p-3 mb-3 rounded-lg bg-white dark:bg-gray-700"
                     in:fly={{ y: 20, duration: 300 }}
                 >
                     <div class="mb-3">

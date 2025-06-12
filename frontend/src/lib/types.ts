@@ -17,8 +17,10 @@ export interface Project {
     id: number;
     title: string;
     working_dir: string;
-    stagingConfigs: StagingConfig;
-    cronJob: string | null;  // Add this line
+    stagingConfig: StagingConfig;
+    cronJob: string | null;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface ExecutionResult {

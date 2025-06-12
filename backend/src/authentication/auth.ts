@@ -133,6 +133,31 @@ export class AuthService {
 		}
 	}
 
+	public async changePassword(
+		username: string,
+		currentPassword: string,
+		newPassword: string
+	): Promise<boolean> {
+		try {
+			const users = await this.readAccessFile();
+			const userIndex = users.findIndex(
+				(u) => u.username === username && u.password === currentPassword
+			);
+
+			if (userIndex === -1) {
+				return false; // User not found or current password incorrect
+			}
+
+			// Update password
+			users[userIndex].password = newPassword;
+			await this.writeAccessFile(users);
+			return true;
+		} catch (error) {
+			console.error("Password change failed:", error);
+			return false;
+		}
+	}
+
 	private async readAccessFile(): Promise<StoredUser[]> {
 		try {
 			const data = await fs.readFile(this.accessFilePath, "utf8");
@@ -140,6 +165,15 @@ export class AuthService {
 		} catch (error) {
 			console.error("Error reading access file:", error);
 			return [];
+		}
+	}
+
+	private async writeAccessFile(users: StoredUser[]): Promise<void> {
+		try {
+			await fs.writeFile(this.accessFilePath, JSON.stringify(users, null, 2), "utf8");
+		} catch (error) {
+			console.error("Error writing access file:", error);
+			throw error;
 		}
 	}
 }

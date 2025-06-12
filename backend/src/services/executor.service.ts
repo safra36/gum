@@ -1,6 +1,9 @@
-import { exec, ExecOptions } from "child_process";
+import { exec, ExecOptions, spawn } from "child_process";
 import * as os from "os";
 import { GitLogEntry } from "../types/executor.service";
+import { ExecutionHistoryService } from "./execution-history.service";
+import { ExecutionStatus } from "../entity/ExecutionHistory";
+import { EventEmitter } from "events";
 
 interface ExecutionResult {
     stdout: string;
@@ -8,16 +11,32 @@ interface ExecutionResult {
     exitCode: number | null;
 }
 
+interface ExecutionContext {
+    userId: number;
+    projectId?: number;
+    stageId?: number;
+    workingDirectory?: string;
+}
+
 export class ExecutorService {
     private static instance: ExecutorService;
+    private executionHistoryService: ExecutionHistoryService;
+    private executionEmitter: EventEmitter;
 
-    private constructor() {}
+    private constructor() {
+        this.executionHistoryService = ExecutionHistoryService.getInstance();
+        this.executionEmitter = new EventEmitter();
+    }
 
     public static getInstance(): ExecutorService {
         if (!ExecutorService.instance) {
             ExecutorService.instance = new ExecutorService();
         }
         return ExecutorService.instance;
+    }
+
+    public getExecutionEmitter(): EventEmitter {
+        return this.executionEmitter;
     }
 
 
@@ -56,14 +75,143 @@ export class ExecutorService {
         }
     }
 
-    public executeScript(script: string, args: string[]): Promise<ExecutionResult> {
+    public async executeScriptWithHistory(
+        script: string, 
+        args: string[], 
+        context: ExecutionContext
+    ): Promise<ExecutionResult> {
+        const startTime = Date.now();
+        
+        // Create execution history record
+        const execution = await this.executionHistoryService.createExecution({
+            userId: context.userId,
+            command: this.substituteArgs(script, args),
+            workingDirectory: context.workingDirectory,
+            projectId: context.projectId,
+            stageId: context.stageId
+        });
+
+        try {
+            const result = await this.executeScript(script, args, context.workingDirectory);
+            const duration = Date.now() - startTime;
+
+            // Update execution history with result
+            await this.executionHistoryService.updateExecution(execution.id, {
+                status: result.exitCode === 0 ? ExecutionStatus.SUCCESS : ExecutionStatus.FAILED,
+                output: result.stdout,
+                errorOutput: result.stderr,
+                exitCode: result.exitCode,
+                duration
+            });
+
+            return result;
+        } catch (error) {
+            const duration = Date.now() - startTime;
+            
+            // Update execution history with error
+            await this.executionHistoryService.updateExecution(execution.id, {
+                status: ExecutionStatus.FAILED,
+                errorOutput: error instanceof Error ? error.message : String(error),
+                duration
+            });
+
+            throw error;
+        }
+    }
+
+    public executeScriptWithStreaming(
+        script: string, 
+        args: string[], 
+        executionId: string,
+        workingDirectory?: string
+    ): Promise<ExecutionResult> {
         return new Promise<ExecutionResult>((resolve, reject) => {
             let stdout = "";
             let stderr = "";
 
             try {
                 const substitutedScript = this.substituteArgs(script, args);
-                const { command, options } = this.buildCommandAndOptions(substitutedScript);
+                
+                // For streaming, we'll use spawn instead of exec to get real-time output
+                const platform = os.platform();
+                let command: string;
+                let commandArgs: string[];
+                
+                if (platform === 'win32') {
+                    command = 'cmd.exe';
+                    commandArgs = ['/c', substitutedScript];
+                } else {
+                    command = '/bin/bash';
+                    commandArgs = ['-c', substitutedScript];
+                }
+
+                const spawnOptions: any = {
+                    stdio: ['pipe', 'pipe', 'pipe'],
+                    shell: false
+                };
+                
+                // Set working directory if provided
+                if (workingDirectory) {
+                    spawnOptions.cwd = workingDirectory;
+                }
+
+                const process = spawn(command, commandArgs, spawnOptions);
+
+                // Stream stdout in real-time
+                process.stdout.on('data', (data) => {
+                    const output = data.toString();
+                    stdout += output;
+                    this.executionEmitter.emit(`execution:${executionId}:stdout`, output);
+                });
+
+                // Stream stderr in real-time
+                process.stderr.on('data', (data) => {
+                    const output = data.toString();
+                    stderr += output;
+                    this.executionEmitter.emit(`execution:${executionId}:stderr`, output);
+                });
+
+                process.on("close", (code) => {
+                    console.log("SSE - Process closed with code:", code);
+                    console.log({
+                        stdout,
+                        stderr,
+                        exitCode: code
+                    });
+                    
+                    console.log(`SSE - Emitting close event for execution: ${executionId}`);
+                    this.executionEmitter.emit(`execution:${executionId}:close`, {
+                        exitCode: code,
+                        stdout,
+                        stderr
+                    });
+                    
+                    resolve({
+                        stdout,
+                        stderr,
+                        exitCode: code
+                    });
+                });
+
+                process.on("error", (error) => {
+                    this.executionEmitter.emit(`execution:${executionId}:error`, error.message);
+                    reject(error);
+                });
+            } catch (error) {
+                this.executionEmitter.emit(`execution:${executionId}:error`, error instanceof Error ? error.message : String(error));
+                reject(error);
+            }
+        });
+    }
+
+    public executeScript(script: string, args: string[], workingDirectory?: string): Promise<ExecutionResult> {
+        return new Promise<ExecutionResult>((resolve, reject) => {
+            let stdout = "";
+            let stderr = "";
+
+            try {
+                const substitutedScript = this.substituteArgs(script, args);
+                const { command, options } = this.buildCommandAndOptions(substitutedScript, workingDirectory);
                 
 
                 const process = exec(command, options, (error, stdoutData, stderrData) => {
@@ -199,10 +347,15 @@ export class ExecutorService {
         }
     }
 
-    private buildCommandAndOptions(script: string): { command: string, options: ExecOptions } {
+    private buildCommandAndOptions(script: string, workingDirectory?: string): { command: string, options: ExecOptions } {
         const platform = os.platform();
         let command: string;
         let options: ExecOptions = {};
+
+        // Set working directory if provided
+        if (workingDirectory) {
+            options.cwd = workingDirectory;
+        }
 
         // Escape single quotes and dollar signs in the script
         const escapedScript = script.replace(/'/g, "'\\''").replace(/\$/g, '\\$');

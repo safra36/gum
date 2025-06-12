@@ -7,6 +7,7 @@ import { ExecutorService } from "./services/executor.service";
 import { Request, Response } from 'express';
 import { CronJobManager } from "./services/cronjob-manager.service";
 import { StateManager } from "./utils/StateManager";
+import { AuthService } from "./services/auth.service";
 
 // Load environment variables
 dotenv.config();
@@ -55,7 +56,7 @@ async function getDynamicRoutes(): Promise<RouteConfig[]> {
                     } else {
                         try {
                             console.log("executing stage", stage.stageId, config.stages.indexOf(stage));
-                            const result = await executorService.executeScript(stage.script, config.args);
+                            const result = await executorService.executeScript(stage.script, config.args, project.working_dir);
                             results.push({
                                 stageId: stage.stageId,
                                 ...result
@@ -94,6 +95,10 @@ async function main() {
         // Initialize database connection
         await AppDataSource.initialize();
         console.log("Database connection has been established successfully.");
+
+        // Initialize default admin user
+        const authService = AuthService.getInstance();
+        await authService.initializeDefaultAdmin();
 
         const cronJobManager = CronJobManager.getInstance();
         await cronJobManager.initializeCronJobs();

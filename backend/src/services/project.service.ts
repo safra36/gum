@@ -31,6 +31,23 @@ export class ProjectService {
     }
 
     public async createProject(dto: CreateProject): Promise<Project> {
+        // Validate input data
+        if (!dto) {
+            throw new Error('Project data is required');
+        }
+        if (!dto.title || !dto.working_dir) {
+            throw new Error('Project title and working directory are required');
+        }
+        if (!dto.stagingConfig) {
+            throw new Error('Staging configuration is required');
+        }
+        if (!dto.stagingConfig.route) {
+            throw new Error('Staging configuration route is required');
+        }
+        if (!dto.stagingConfig.stages || dto.stagingConfig.stages.length === 0) {
+            throw new Error('At least one stage is required in staging configuration');
+        }
+
         const project = new Project();
         project.title = dto.title;
         project.working_dir = dto.working_dir;
@@ -53,28 +70,17 @@ export class ProjectService {
             const savedStagingConfig = await AppDataSource.manager.save(stagingConfig);
 
             // Create and save stages
-
-            savedStagingConfig.stages = dto.stagingConfig.stages.map((stageDto, index) => {
+            const stages = await Promise.all(dto.stagingConfig.stages.map(async (stageDto, index) => {
                 const stage = new Stage();
                 stage.script = stageDto.script;
                 stage.stageId = stageDto.stageId;
                 stage.stagingConfig = savedStagingConfig;
                 // to preserve order of creating
-                stage.created_at = Date.now() + +index
-                return stage;
-                // return await AppDataSource.manager.save(stage);
-            })
-
-            const stages = await AppDataSource.getRepository(StagingConfig).save(savedStagingConfig)
-
-            /* const stages = await Promise.all(dto.stagingConfig.stages.map(async (stageDto) => {
-                const stage = new Stage();
-                stage.script = stageDto.script;
-                stage.stageId = stageDto.stageId;
-                stage.stagingConfig = savedStagingConfig;
+                stage.created_at = Date.now() + index;
                 return await AppDataSource.manager.save(stage);
-            })); */
+            }));
 
+            savedStagingConfig.stages = stages;
             savedProject.stagingConfig = savedStagingConfig;
 
             await AppDataSource.manager.save(savedProject);
@@ -84,8 +90,17 @@ export class ProjectService {
             throw error;
         }
 
-        // Return the project without circular references
-        return this.getProjectById(savedProject.id);
+        // Return the project with all relations loaded
+        const finalProject = await AppDataSource.manager.findOne(Project, {
+            where: { id: savedProject.id },
+            relations: ['stagingConfig', 'stagingConfig.stages']
+        });
+        
+        if (!finalProject || !finalProject.stagingConfig) {
+            throw new Error('Failed to create project with staging configuration');
+        }
+        
+        return finalProject;
     }
 
     public async updateProject(projectId: number, updateData: UpdateProjectDTO): Promise<Project> {
@@ -156,10 +171,16 @@ export class ProjectService {
     }
 
     public async getProjectById(id: number): Promise<Project> {
-        return await AppDataSource.manager.findOne(Project, {
+        const project = await AppDataSource.manager.findOne(Project, {
             where: { id },
             relations: ['stagingConfig', 'stagingConfig.stages']
         });
+        
+        if (!project) {
+            throw new Error(`Project with id ${id} not found`);
+        }
+        
+        return project;
     }
 
     public async getAllProjects(): Promise<Project[]> {

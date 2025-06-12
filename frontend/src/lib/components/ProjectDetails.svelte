@@ -5,9 +5,12 @@
     import { fade, fly } from "svelte/transition";
     import StageList from "./StageList.svelte";
     import GitLog from "./GitLog.svelte";
+    import StreamingConsole from "./StreamingConsole.svelte";
+    import PermissionGuard from "./PermissionGuard.svelte";
     import { executeStaging, fetchGitLog, fetchGitBranches, switchGitBranch, revertToCommit, switchToHead, setCronJob, getCronJob, removeCronJob } from "../services/api";
     import type { Project, ExecutionResult, GitLogEntry } from "$lib/types";
-    import { Loader2, FolderOpen, GitBranch, Play, Edit, GitBranchIcon, Check, GitCommit, PenTool, ArrowUp, RotateCcw, Clock, Info, Trash2 } from "lucide-svelte";
+    import { permissions } from '$lib/stores/user';
+    import { Loader2, FolderOpen, GitBranch, Play, Edit, GitBranchIcon, Check, GitCommit, PenTool, ArrowUp, RotateCcw, Clock, Info, Trash2, Terminal } from "lucide-svelte";
 
     export let project: Project;
     export let onEdit: () => void;
@@ -35,6 +38,9 @@
     let isLoadingCronJob = false;
     let isRemovingCronJob = false;
     let cronJobError: string | null = null;
+    let useStreamingExecution = false;
+    let currentExecutionMode = 'normal'; // 'normal' or 'streaming'
+    let streamingConsoleRef: StreamingConsole;
 
     $: isValidCron = validateCronExpression(cronExpression);
 
@@ -87,8 +93,8 @@
     }
 
     $: hasStagingConfig =
-        project.stagingConfigs &&
-        Object.keys(project.stagingConfigs).length > 0;
+        project.stagingConfig &&
+        Object.keys(project.stagingConfig).length > 0;
 
     async function handleExecuteStaging() {
         if (!hasStagingConfig) {
@@ -97,11 +103,20 @@
             return;
         }
 
+        // For streaming mode, trigger the StreamingConsole component's execution
+        if (currentExecutionMode === 'streaming') {
+            if (streamingConsoleRef) {
+                streamingConsoleRef.startExecution();
+            }
+            return;
+        }
+
+        // Normal execution mode
         isExecuting = true;
         executionError = null;
         executionResults = null;
         try {
-            const response = await executeStaging(project.stagingConfigs.route);
+            const response = await executeStaging(project.stagingConfig.route);
             executionResults = response.results;
             if (!response.success) {
                 executionError = `Execution completed with errors. Project: ${response.project}`;
@@ -274,58 +289,91 @@
         return regex.test(expression.trim());
     }
 
+    function generateFullScript(): string {
+        if (!project.stagingConfig?.stages) {
+            return "";
+        }
+        
+        // Combine all stage scripts into one executable script
+        const stages = project.stagingConfig.stages;
+        const scriptParts = [`#!/bin/bash`, `# Combined script for project: ${project.title}`, ``];
+        
+        stages.forEach((stage, index) => {
+            scriptParts.push(`echo "=== Executing Stage ${index + 1}: ${stage.stageId} ==="`);
+            scriptParts.push(stage.script);
+            scriptParts.push(`if [ $? -ne 0 ]; then`);
+            scriptParts.push(`  echo "Stage ${stage.stageId} failed with exit code $?"`);
+            scriptParts.push(`  exit 1`);
+            scriptParts.push(`fi`);
+            scriptParts.push(`echo "Stage ${stage.stageId} completed successfully"`);
+            scriptParts.push(``);
+        });
+        
+        scriptParts.push(`echo "All stages completed successfully"`);
+        
+        return scriptParts.join('\n');
+    }
+
 </script>
 
 <div
-    class="bg-white shadow-lg rounded-lg p-6 transition-all duration-300 ease-in-out"
+    class="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-6 transition-all duration-300 ease-in-out"
     in:fade={{ duration: 300, delay: 300 }}
 >
     <div class="flex justify-between items-center mb-6">
-        <h2 class="text-3xl font-bold text-gray-800 flex items-center">
-            <FolderOpen class="mr-3 text-blue-500" size={28} />
+        <h2 class="text-3xl font-bold text-gray-800 dark:text-white flex items-center">
+            <FolderOpen class="mr-3 text-blue-500 dark:text-blue-400" size={28} />
             {project.title}
         </h2>
-        <button
-            class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-full transition-colors duration-200 flex items-center"
-            on:click={onEdit}
-        >
-            <Edit size={18} class="mr-2" />
-            Edit Project
-        </button>
+        <PermissionGuard requiredPermission="canEdit">
+          <button
+              class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-full transition-colors duration-200 flex items-center"
+              on:click={onEdit}
+          >
+              <Edit size={18} class="mr-2" />
+              Edit Project
+          </button>
+        </PermissionGuard>
     </div>
 
 
-    <div
-        class="mb-6 bg-gray-100 p-4 rounded-lg"
-        in:fly={{ y: 20, duration: 300, delay: 400 }}
-    >
-        <p class="text-gray-700">
-            <strong>Working Directory:</strong>
-            {project.working_dir}
-        </p>
-    </div>
+    <PermissionGuard requiredPermission="canEdit" variant="full">
+      <div
+          class="mb-6 bg-gray-100 dark:bg-gray-700 p-4 rounded-lg"
+          in:fly={{ y: 20, duration: 300, delay: 400 }}
+      >
+          <p class="text-gray-700 dark:text-gray-300">
+              <strong>Working Directory:</strong>
+              {project.working_dir}
+          </p>
+      </div>
+    </PermissionGuard>
 
     {#if hasStagingConfig}
-        <div
-            class="mb-6 bg-blue-50 p-4 rounded-lg"
-            in:fly={{ y: 20, duration: 300, delay: 500 }}
-        >
-            <h3 class="text-xl font-semibold mb-3 text-blue-700">
-                Staging Configuration
-            </h3>
-            <p class="mb-2">
-                <strong>Route:</strong>
-                {project.stagingConfigs.route}
-            </p>
-            <p>
-                <strong>Arguments:</strong>
-                {project.stagingConfigs.args.join(", ") || "None"}
-            </p>
-        </div>
+        <PermissionGuard requiredPermission="canEdit" variant="full">
+          <div
+              class="mb-6 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg"
+              in:fly={{ y: 20, duration: 300, delay: 500 }}
+          >
+              <h3 class="text-xl font-semibold mb-3 text-blue-700 dark:text-blue-300">
+                  Staging Configuration
+              </h3>
+              <p class="mb-2">
+                  <strong>Route:</strong>
+                  {project.stagingConfig.route}
+              </p>
+              <p>
+                  <strong>Arguments:</strong>
+                  {project.stagingConfig.args.join(", ") || "None"}
+              </p>
+          </div>
+        </PermissionGuard>
 
-        <div in:fly={{ y: 20, duration: 300, delay: 600 }}>
-            <StageList stages={project.stagingConfigs.stages} />
-        </div>
+        <PermissionGuard requiredPermission="canEdit" variant="full">
+          <div in:fly={{ y: 20, duration: 300, delay: 600 }}>
+              <StageList stages={project.stagingConfig.stages} />
+          </div>
+        </PermissionGuard>
 
     {:else}
         <p
@@ -338,7 +386,7 @@
 
     {#if executionError}
         <div
-            class="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg"
+            class="mt-6 p-4 bg-red-100 dark:bg-red-900/20 border border-red-400 dark:border-red-500 text-red-700 dark:text-red-300 rounded-lg"
             in:fly={{ y: 20, duration: 300 }}
         >
             <p class="font-bold">Error:</p>
@@ -385,10 +433,36 @@
         </div>
     {/if}
 
+    <!-- Streaming Console Section -->
+    {#if currentExecutionMode === 'streaming'}
+        <div class="mt-6" in:fly={{ y: 20, duration: 300 }}>
+            <StreamingConsole 
+                bind:this={streamingConsoleRef}
+                script={generateFullScript()}
+                args={project.stagingConfig?.args || []}
+                projectId={project.id}
+                on:executionStarted={(e) => {
+                    console.log('Execution started:', e.detail);
+                    isExecuting = true;
+                    executionError = null;
+                    executionResults = null;
+                }}
+                on:executionCompleted={(e) => {
+                    console.log('Execution completed:', e.detail);
+                    isExecuting = false;
+                }}
+                on:executionError={(e) => {
+                    console.log('Execution error:', e.detail);
+                    isExecuting = false;
+                    executionError = e.detail;
+                }}
+            />
+        </div>
+    {/if}
 
     {#if gitLogError}
         <div
-            class="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg"
+            class="mt-6 p-4 bg-red-100 dark:bg-red-900/20 border border-red-400 dark:border-red-500 text-red-700 dark:text-red-300 rounded-lg"
             in:fly={{ y: 20, duration: 300 }}
         >
             <p class="font-bold">Error:</p>
@@ -396,61 +470,100 @@
         </div>
     {/if}
 
-    <div class="mt-6 bg-gray-100 rounded-lg p-4" in:fly={{ y: 20, duration: 300 }}>
-        <h3 class="text-lg font-semibold mb-3 flex items-center">
-            <PenTool class="mr-2 text-gray-600" size={20} />
+    <div class="mt-6 bg-gray-100 dark:bg-gray-700 rounded-lg p-4" in:fly={{ y: 20, duration: 300 }}>
+        <h3 class="text-lg font-semibold mb-3 flex items-center text-gray-800 dark:text-white">
+            <PenTool class="mr-2 text-gray-600 dark:text-gray-300" size={20} />
             Project Toolbox
         </h3>
+        
+        <!-- Execution Mode Toggle -->
+        <div class="mb-4 flex items-center space-x-4">
+            <label class="flex items-center space-x-2">
+                <input 
+                    type="radio" 
+                    bind:group={currentExecutionMode} 
+                    value="normal"
+                    class="text-blue-600 focus:ring-blue-500"
+                />
+                <span class="text-sm font-medium text-gray-700">Normal Execution</span>
+            </label>
+            <label class="flex items-center space-x-2">
+                <input 
+                    type="radio" 
+                    bind:group={currentExecutionMode} 
+                    value="streaming"
+                    class="text-blue-600 focus:ring-blue-500"
+                />
+                <span class="text-sm font-medium text-gray-700 flex items-center">
+                    <Terminal class="mr-1" size={14} />
+                    Real-time Console
+                </span>
+            </label>
+        </div>
+        
         <div class="flex flex-wrap gap-3">
-            <button
-                class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 disabled:bg-blue-300 transition-colors duration-200 flex items-center justify-center"
-                on:click={handleExecuteStaging}
-                disabled={isExecuting || !hasStagingConfig}
-            >
-                {#if isExecuting}
-                    <Loader2 class="animate-spin mr-2" size={18} />
-                    Executing...
-                {:else}
-                    <Play class="mr-2" size={18} />
-                    Execute Staging
-                {/if}
-            </button>
+            <PermissionGuard requiredPermission="canExecute">
+              <button
+                  class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 disabled:bg-blue-300 transition-colors duration-200 flex items-center justify-center"
+                  on:click={handleExecuteStaging}
+                  disabled={isExecuting || !hasStagingConfig}
+              >
+                  {#if isExecuting}
+                      <Loader2 class="animate-spin mr-2" size={18} />
+                      Executing...
+                  {:else}
+                      {#if currentExecutionMode === 'streaming'}
+                          <Terminal class="mr-2" size={18} />
+                          Execute with Console
+                      {:else}
+                          <Play class="mr-2" size={18} />
+                          Execute Staging
+                      {/if}
+                  {/if}
+              </button>
+            </PermissionGuard>
 
-            <button
-                class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 disabled:bg-green-300 transition-colors duration-200 flex items-center justify-center"
-                on:click={loadGitLog}
-                disabled={isLoadingGitLog || isLoadingGitBranches}
-            >
-                {#if isLoadingGitLog}
-                    <Loader2 class="animate-spin mr-2" size={18} />
-                    Loading...
-                {:else}
-                    <GitCommit class="mr-2" size={18} />
-                    Load Git Log
-                {/if}
-            </button>
+            <PermissionGuard requiredPermission="canViewGitLogs">
+              <button
+                  class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 disabled:bg-green-300 transition-colors duration-200 flex items-center justify-center"
+                  on:click={loadGitLog}
+                  disabled={isLoadingGitLog || isLoadingGitBranches}
+              >
+                  {#if isLoadingGitLog}
+                      <Loader2 class="animate-spin mr-2" size={18} />
+                      Loading...
+                  {:else}
+                      <GitCommit class="mr-2" size={18} />
+                      Load Git Log
+                  {/if}
+              </button>
+            </PermissionGuard>
 
-            <button
-                class="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 disabled:bg-purple-300 transition-colors duration-200 flex items-center justify-center"
-                on:click={loadGitBranches}
-                disabled={isLoadingGitBranches || isLoadingGitLog}
-            >
-                {#if isLoadingGitBranches}
-                    <Loader2 class="animate-spin mr-2" size={18} />
-                    Loading...
-                {:else}
-                    <GitBranch class="mr-2" size={18} />
-                    Load Branches
-                {/if}
-            </button>
+            <PermissionGuard requiredPermission="canSwitchBranch">
+              <button
+                  class="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 disabled:bg-purple-300 transition-colors duration-200 flex items-center justify-center"
+                  on:click={loadGitBranches}
+                  disabled={isLoadingGitBranches || isLoadingGitLog}
+              >
+                  {#if isLoadingGitBranches}
+                      <Loader2 class="animate-spin mr-2" size={18} />
+                      Loading...
+                  {:else}
+                      <GitBranch class="mr-2" size={18} />
+                      Load Branches
+                  {/if}
+              </button>
+            </PermissionGuard>
 
-            <button
-                class="bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-600 transition-colors duration-200 flex items-center justify-center"
-                on:click={() => showCronJobModal = true}
-            >
-                <Clock class="mr-2" size={18} />
-                Set Cron Job
-            </button>
+            <PermissionGuard requiredPermission="canSetCron">
+              <button
+                  class="bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-600 transition-colors duration-200 flex items-center justify-center"
+                  on:click={() => showCronJobModal = true}
+              >
+                  <Clock class="mr-2" size={18} />
+                  Set Cron Job
+              </button>
+            </PermissionGuard>
 
             <!-- Additional tools can be added here in the future -->
         </div>
@@ -459,7 +572,7 @@
 
     {#if gitLogError}
         <div
-            class="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg"
+            class="mt-6 p-4 bg-red-100 dark:bg-red-900/20 border border-red-400 dark:border-red-500 text-red-700 dark:text-red-300 rounded-lg"
             in:fly={{ y: 20, duration: 300 }}
         >
             <p class="font-bold">Error:</p>
@@ -469,7 +582,7 @@
 
     {#if gitBranchesError}
         <div
-            class="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg"
+            class="mt-6 p-4 bg-red-100 dark:bg-red-900/20 border border-red-400 dark:border-red-500 text-red-700 dark:text-red-300 rounded-lg"
             in:fly={{ y: 20, duration: 300 }}
         >
             <p class="font-bold">Error:</p>
@@ -479,7 +592,7 @@
 
     {#if branchSwitchError}
         <div
-            class="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg"
+            class="mt-6 p-4 bg-red-100 dark:bg-red-900/20 border border-red-400 dark:border-red-500 text-red-700 dark:text-red-300 rounded-lg"
             in:fly={{ y: 20, duration: 300 }}
         >
             <p class="font-bold">Error:</p>
@@ -493,7 +606,7 @@
 
     {#if revertError}
         <div
-            class="mt-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg"
+            class="mt-6 p-4 bg-red-100 dark:bg-red-900/20 border border-red-400 dark:border-red-500 text-red-700 dark:text-red-300 rounded-lg"
             in:fly={{ y: 20, duration: 300 }}
         >
             <p class="font-bold">Error:</p>
@@ -503,10 +616,10 @@
 
     {#if gitBranches}
         <div class="mt-6" in:fly={{ y: 20, duration: 300 }}>
-            <h3 class="text-xl font-semibold mb-2">Git Branches</h3>
+            <h3 class="text-xl font-semibold mb-2 text-gray-800 dark:text-white">Git Branches</h3>
             <ul class="space-y-2">
                 {#each gitBranches as branch}
-                    <li class="flex items-center justify-between bg-gray-100 p-2 rounded">
+                    <li class="flex items-center justify-between bg-gray-100 dark:bg-gray-700 p-2 rounded">
                         <span class="font-mono flex items-center">
                             {#if branch === activeBranch}
                                 <Check size={16} class="text-green-500 mr-2" />
@@ -561,9 +674,9 @@
                 <Clock class="mr-2 text-indigo-500" size={24} />
                 {project.cronJob ? 'Update Cron Job' : 'Set Cron Job'}
             </h2>
-            <p class="mb-4 text-gray-600">
+            <p class="mb-4 text-gray-600 dark:text-gray-300">
                 {#if project.cronJob}
-                    Current cron job: <span class="font-mono bg-gray-100 px-2 py-1 rounded">{project.cronJob}</span>
+                    Current cron job: <span class="font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-800 dark:text-white">{project.cronJob}</span>
                 {:else}
                     Select a preset or enter a custom cron expression to schedule automatic project execution.
                 {/if}

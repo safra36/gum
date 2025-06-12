@@ -11,8 +11,8 @@
     let title = project.title;
     let working_dir = project.working_dir;
     let stagingConfig: Omit<StagingConfig, "args"> & { args: string } = {
-        ...project.stagingConfigs,
-        args: project.stagingConfigs.args.join(", "),
+        ...project.stagingConfig,
+        args: project.stagingConfig.args.join(", "),
     };
 
     function addStage() {
@@ -33,7 +33,7 @@
         const projectData: Partial<Project> = {
             title,
             working_dir,
-            stagingConfigs: {
+            stagingConfig: {
                 ...stagingConfig,
                 args: stagingConfig.args.split(",").map((arg) => arg.trim()),
                 stages: stagingConfig.stages.map((stage) => ({
@@ -72,7 +72,7 @@
 
 <form
     on:submit|preventDefault={handleSubmit}
-    class="bg-white shadow-lg rounded-lg px-8 pt-6 pb-8 mb-4 max-w-5xl mx-auto"
+    class="bg-white dark:bg-gray-800 shadow-lg rounded-lg px-8 pt-6 pb-8 mb-4 max-w-5xl mx-auto"
 >
     <h2 class="text-3xl font-bold mb-6 text-gray-800 flex items-center">
         <Folder class="mr-3 text-blue-500" size={28} />
@@ -157,7 +157,7 @@
             </h4>
             {#each stagingConfig.stages as stage, stageIndex}
                 <div
-                    class="border border-gray-200 p-3 mb-3 rounded-lg bg-white"
+                    class="border border-gray-200 dark:border-gray-600 p-3 mb-3 rounded-lg bg-white dark:bg-gray-700"
                 >
                     <div class="mb-3">
                         <label

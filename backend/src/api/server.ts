@@ -8,7 +8,8 @@ import cors from "cors"
 import { GitLogEntry } from "../types/executor.service";
 import { CronJobManager } from "../services/cronjob-manager.service";
 import { StateManager } from "../utils/StateManager";
-import { AuthService } from "../authentication/auth";
+import { AuthService } from "../services/auth.service";
+import { ExecutionHistoryService } from "../services/execution-history.service";
 import { LoginRequestDto, LoginResponseDto, User } from "../types/authentication";
 import { AuthLevels } from "../authentication/auth.config";
 
@@ -21,7 +22,8 @@ export class APIServer {
     private projectService: ProjectService;
     private executorService: ExecutorService;
     private cronJobManager: CronJobManager;
-    private authService : AuthService
+    private authService: AuthService;
+    private executionHistoryService: ExecutionHistoryService;
 
     private constructor() {
         this.app = express();
@@ -29,6 +31,7 @@ export class APIServer {
         this.cronJobManager = CronJobManager.getInstance();
         this.executorService = ExecutorService.getInstance();
         this.authService = AuthService.getInstance();
+        this.executionHistoryService = ExecutionHistoryService.getInstance();
         this.setupMiddleware();
 
         console.log(this.authService);
@@ -46,9 +49,21 @@ export class APIServer {
         this.app.use(express.json());
         this.app.use(express.urlencoded({ extended: true }));
         this.app.use(cors({
-            origin : "*",
-            credentials : true,
-            methods : 'GET,HEAD,PUT,PATCH,POST,DELETE'
+            origin: [
+                "http://localhost:5173",
+                "http://localhost:4173", 
+                "http://localhost:3000",
+                "http://localhost:8080",
+                "http://127.0.0.1:5173",
+                "http://127.0.0.1:4173",
+                "http://127.0.0.1:3000",
+                "http://127.0.0.1:8080"
+            ],
+            credentials: true,
+            methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+            allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+            preflightContinue: false,
+            optionsSuccessStatus: 204
         }))
     }
 
@@ -150,7 +165,6 @@ export class APIServer {
 
 
         this.app.post("/login", async (req : Request, res : Response) => {
-
             const {
                 password,
                 username
@@ -159,26 +173,345 @@ export class APIServer {
             const token = await this.authService.login(username, password);
 
             if(token) {
-                res.status(200).send(JSON.stringify({
+                res.status(200).json({
                     access_token : token
-                } as LoginResponseDto))
+                } as LoginResponseDto)
             } else {
-                res.status(401).send();
+                res.status(401).json({ error: "Invalid credentials" });
             }
-
         })
 
 
         this.app.get("/verify", async (req : Request, res : Response) => {
+            try {
+                const authHeader = req.headers.authorization;
+                if (!authHeader) {
+                    return res.status(401).json({ error: "No authorization header" });
+                }
 
-
-            const user_token = req.headers.authorization.split(" ")[1];
-            const user = await this.authService.verifyLogin(user_token);
-            if(user) res.status(200).send();
-            else res.status(401).send();
-
-
+                const user_token = authHeader.split(" ")[1];
+                const user = await this.authService.verifyLogin(user_token);
+                if(user) {
+                    res.status(200).json({ user: { id: user.id, username: user.username, role: user.role } });
+                } else {
+                    res.status(401).json({ error: "Invalid token" });
+                }
+            } catch (error) {
+                res.status(401).json({ error: "Invalid token" });
+            }
         })
+
+        // User profile endpoint with permissions
+        this.app.get("/me", this.authenticateRequest, async (req: Request, res: Response) => {
+            try {
+                const user = req["user"] as any;
+                const fullUser = await this.authService.getUserById(user.id);
+                
+                if (!fullUser) {
+                    return res.status(404).json({ error: "User not found" });
+                }
+
+                res.status(200).json({
+                    id: fullUser.id,
+                    username: fullUser.username,
+                    email: fullUser.email,
+                    role: fullUser.role,
+                    permissions: fullUser.permissions,
+                    isActive: fullUser.isActive
+                });
+            } catch (error) {
+                console.error("Error fetching user profile:", error);
+                res.status(500).json({ error: "Failed to fetch user profile" });
+            }
+        });
+
+        // Password change endpoint
+        this.app.post("/change-password", this.authenticateRequest, async (req: Request, res: Response) => {
+            try {
+                const { currentPassword, newPassword } = req.body;
+                const user = req["user"] as any;
+
+                if (!currentPassword || !newPassword) {
+                    return res.status(400).json({ error: "Current password and new password are required" });
+                }
+
+                if (newPassword.length < 6) {
+                    return res.status(400).json({ error: "New password must be at least 6 characters long" });
+                }
+
+                const success = await this.authService.changePassword(user.id, currentPassword, newPassword);
+                
+                if (success) {
+                    res.status(200).json({ message: "Password changed successfully" });
+                } else {
+                    res.status(400).json({ error: "Current password is incorrect" });
+                }
+            } catch (error) {
+                console.error("Password change error:", error);
+                res.status(500).json({ error: "Failed to change password" });
+            }
+        })
+
+        // SSE endpoint for real-time execution logs
+        this.app.get("/execution-stream/:executionId", async (req: Request, res: Response) => {
+            const executionId = req.params.executionId;
+            
+            // Handle authentication via query parameter since EventSource doesn't support headers
+            const token = req.query.token as string;
+            console.log("SSE Auth - Token received:", token ? `${token.substring(0, 20)}...` : "none");
+            
+            if (!token) {
+                console.log("SSE Auth - No token provided");
+                return res.status(401).json({ error: "No authentication token provided" });
+            }
+            
+            try {
+                const user = await this.authService.verifyLogin(token);
+                console.log("SSE Auth - User verification result:", user ? `User ${user.username} (ID: ${user.id})` : "null");
+                
+                if (!user) {
+                    console.log("SSE Auth - User verification failed");
+                    return res.status(401).json({ error: "Invalid authentication token" });
+                }
+                
+                console.log("SSE Auth - Authentication successful for user:", user.username);
+            } catch (error) {
+                console.error("SSE Auth - Error during verification:", error);
+                return res.status(401).json({ error: "Authentication error" });
+            }
+
+            // Set SSE headers
+            console.log("SSE - Setting up event stream for execution:", executionId);
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Cache-Control'
+            });
+
+            // Send initial connection event
+            console.log("SSE - Sending initial connection event");
+            res.write(`data: ${JSON.stringify({ type: 'connected', executionId })}\n\n`);
+
+            const executorService = ExecutorService.getInstance();
+            const emitter = executorService.getExecutionEmitter();
+
+            // Set up event listeners for this execution
+            const stdoutListener = (data: string) => {
+                res.write(`data: ${JSON.stringify({ type: 'stdout', data, timestamp: Date.now() })}\n\n`);
+            };
+
+            const stderrListener = (data: string) => {
+                res.write(`data: ${JSON.stringify({ type: 'stderr', data, timestamp: Date.now() })}\n\n`);
+            };
+
+            const closeListener = (result: any) => {
+                console.log(`SSE - Close event received for execution ${executionId}:`, result);
+                res.write(`data: ${JSON.stringify({ type: 'close', result, timestamp: Date.now() })}\n\n`);
+                cleanup();
+            };
+
+            const errorListener = (error: string) => {
+                console.log(`SSE - Error event received for execution ${executionId}:`, error);
+                res.write(`data: ${JSON.stringify({ type: 'error', error, timestamp: Date.now() })}\n\n`);
+                cleanup();
+            };
+
+            // Register event listeners
+            emitter.on(`execution:${executionId}:stdout`, stdoutListener);
+            emitter.on(`execution:${executionId}:stderr`, stderrListener);
+            emitter.on(`execution:${executionId}:close`, closeListener);
+            emitter.on(`execution:${executionId}:error`, errorListener);
+
+            // Cleanup function
+            const cleanup = () => {
+                emitter.removeListener(`execution:${executionId}:stdout`, stdoutListener);
+                emitter.removeListener(`execution:${executionId}:stderr`, stderrListener);
+                emitter.removeListener(`execution:${executionId}:close`, closeListener);
+                emitter.removeListener(`execution:${executionId}:error`, errorListener);
+                res.end();
+            };
+
+            // Handle client disconnect
+            req.on('close', cleanup);
+            req.on('aborted', cleanup);
+
+            // Send keepalive ping every 30 seconds
+            const keepAlive = setInterval(() => {
+                res.write(`data: ${JSON.stringify({ type: 'ping', timestamp: Date.now() })}\n\n`);
+            }, 30000);
+
+            req.on('close', () => {
+                clearInterval(keepAlive);
+                cleanup();
+            });
+        });
+
+        // Streaming execution endpoint
+        this.app.post("/execute-stream", this.authenticateRequest, this.checkAccess(AuthLevels.ExecuteScript), async (req: Request, res: Response) => {
+            try {
+                const { projectId, stageId, script, args = [] } = req.body;
+                const user = req["user"] as any;
+                const executionId = `exec_${Date.now()}_${user.id}`;
+
+                if (!script) {
+                    return res.status(400).json({ error: "Script is required" });
+                }
+
+                // Return execution ID immediately for client to connect to SSE
+                res.status(200).json({ 
+                    executionId,
+                    message: "Execution started. Connect to /execution-stream/:executionId for real-time logs."
+                });
+
+                // Start execution asynchronously
+                setTimeout(async () => {
+                    try {
+                        const executorService = ExecutorService.getInstance();
+                        
+                        // Get project working directory if projectId is provided
+                        let workingDirectory: string | undefined;
+                        if (projectId) {
+                            const project = await this.projectService.getProjectById(projectId);
+                            workingDirectory = project?.working_dir;
+                        }
+                        
+                        await executorService.executeScriptWithStreaming(script, args, executionId, workingDirectory);
+                    } catch (error) {
+                        console.error("Execution error:", error);
+                    }
+                }, 100);
+
+            } catch (error) {
+                console.error("Stream execution error:", error);
+                res.status(500).json({ error: "Failed to start execution stream" });
+            }
+        });
+
+        // User Management Routes (Admin only)
+        this.app.get('/users', this.authenticateRequest, this.checkAccess(AuthLevels.ViewUsers), async (req: Request, res: Response) => {
+            try {
+                const users = await this.authService.getAllUsers();
+                res.status(200).json(users);
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to fetch users', details: error.message });
+            }
+        });
+
+        this.app.post('/users', this.authenticateRequest, this.checkAccess(AuthLevels.CreateUser), async (req: Request, res: Response) => {
+            try {
+                const { username, password, email, role, permissions } = req.body;
+                
+                if (!username || !password) {
+                    return res.status(400).json({ error: 'Username and password are required' });
+                }
+
+                const user = await this.authService.createUser({
+                    username,
+                    password,
+                    email,
+                    role,
+                    permissions
+                });
+
+                res.status(201).json({ message: 'User created successfully', user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    role: user.role,
+                    permissions: user.permissions,
+                    isActive: user.isActive
+                }});
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to create user', details: error.message });
+            }
+        });
+
+        this.app.put('/users/:userId', this.authenticateRequest, this.checkAccess(AuthLevels.EditUser), async (req: Request, res: Response) => {
+            try {
+                const userId = parseInt(req.params.userId);
+                const { username, password, email, role, permissions, isActive } = req.body;
+
+                const user = await this.authService.updateUser(userId, {
+                    username,
+                    password,
+                    email,
+                    role,
+                    permissions,
+                    isActive
+                });
+
+                res.status(200).json({ message: 'User updated successfully', user: {
+                    id: user.id,
+                    username: user.username,
+                    email: user.email,
+                    role: user.role,
+                    permissions: user.permissions,
+                    isActive: user.isActive
+                }});
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to update user', details: error.message });
+            }
+        });
+
+        this.app.delete('/users/:userId', this.authenticateRequest, this.checkAccess(AuthLevels.DeleteUser), async (req: Request, res: Response) => {
+            try {
+                const userId = parseInt(req.params.userId);
+                await this.authService.deleteUser(userId);
+                res.status(200).json({ message: 'User deleted successfully' });
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to delete user', details: error.message });
+            }
+        });
+
+        // Execution History Routes
+        this.app.get('/execution-history', this.authenticateRequest, this.checkAccess(AuthLevels.ViewExecutionHistory), async (req: Request, res: Response) => {
+            try {
+                const { projectId, stageId, status, limit = 50, offset = 0 } = req.query;
+                const currentUser = req["user"] as any;
+                
+                const options: any = {
+                    limit: parseInt(limit as string),
+                    offset: parseInt(offset as string)
+                };
+
+                // Non-admin users can only see their own execution history
+                if (currentUser.role !== 'admin') {
+                    options.userId = currentUser.id;
+                }
+
+                if (projectId) options.projectId = parseInt(projectId as string);
+                if (stageId) options.stageId = parseInt(stageId as string);
+                if (status) options.status = status;
+
+                const result = await this.executionHistoryService.getExecutionHistory(options);
+                res.status(200).json(result);
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to fetch execution history', details: error.message });
+            }
+        });
+
+        this.app.get('/execution-history/:executionId', this.authenticateRequest, this.checkAccess(AuthLevels.ViewExecutionHistory), async (req: Request, res: Response) => {
+            try {
+                const executionId = parseInt(req.params.executionId);
+                const execution = await this.executionHistoryService.getExecutionById(executionId);
+                
+                if (!execution) {
+                    return res.status(404).json({ error: 'Execution not found' });
+                }
+
+                const currentUser = req["user"] as any;
+                // Non-admin users can only see their own executions
+                if (currentUser.role !== 'admin' && execution.userId !== currentUser.id) {
+                    return res.status(403).json({ error: 'Access denied' });
+                }
+
+                res.status(200).json(execution);
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to fetch execution', details: error.message });
+            }
+        });
 
         // Project creation route
         this.app.post('/project', this.authenticateRequest, this.checkAccess(AuthLevels.CreateProject), async (req: Request, res: Response) => {
@@ -264,21 +597,22 @@ export class APIServer {
                 const projects = await this.projectService.getAllProjects();
                 const projectDTOs = projects.map(this.projectToDTO);
 
-                const allowed = await this.authService.hasAccess(
-                    req["user"] as User,
+                const user = req["user"] as any;
+                const allowed = await this.authService.hasPermission(
+                    user.id,
                     AuthLevels.EditProject
                 )
     
                 let response = (allowed) ? projectDTOs :
                 projectDTOs.map(projectObject => {
 
-                    projectObject.stagingConfigs.stages = projectObject.stagingConfigs.stages.map(stage => ({
+                    projectObject.stagingConfig.stages = projectObject.stagingConfig.stages.map(stage => ({
                         id : stage.id,
                         script : "Hidden",
                         stageId : stage.stageId
                     }));
 
-                    projectObject.stagingConfigs.args = projectObject.stagingConfigs.args.map(arg => "Hidden")                    
+                    projectObject.stagingConfig.args = projectObject.stagingConfig.args.map(arg => "Hidden")                    
 
                     return projectObject;
                 })
@@ -299,9 +633,9 @@ export class APIServer {
                     title: req.body.title,
                     working_dir: req.body.working_dir,
                     stagingConfig: {
-                        route: req.body.stagingConfigs.route,
-                        args: req.body.stagingConfigs.args,
-                        stages: req.body.stagingConfigs.stages
+                        route: req.body.stagingConfig.route,
+                        args: req.body.stagingConfig.args,
+                        stages: req.body.stagingConfig.stages
                     },
                     cronJob: req.body.cronJob
                 };
@@ -510,15 +844,20 @@ export class APIServer {
 
         console.log(project);
         
+        // Check if stagingConfig exists before accessing its properties
+        if (!project.stagingConfig) {
+            throw new Error('Project staging configuration is missing');
+        }
+        
         return {
             id: project.id,
             title: project.title,
             working_dir: project.working_dir,
-            stagingConfigs: {
+            stagingConfig: {
                 id: project.stagingConfig.id,
                 route: project.stagingConfig.route,
-                args: project.stagingConfig.args,
-                stages: project.stagingConfig.stages.map(stage => ({
+                args: project.stagingConfig.args || [],
+                stages: (project.stagingConfig.stages || []).map(stage => ({
                     id: stage.id,
                     script: stage.script,
                     stageId: stage.stageId
@@ -547,15 +886,15 @@ export class APIServer {
 
         return async (req : Request , res : Response, next : NextFunction) => {
 
-
-            const allowed = await this.authService.hasAccess(
-                req["user"] as User,
+            const user = req["user"] as any;
+            const allowed = await this.authService.hasPermission(
+                user.id,
                 access
             )
 
             if(!allowed) {
-                res.status(401).json({ error: 'Request failed', details: "permission denied" });
-                next(new Error("permission denied"))
+                res.status(403).json({ error: 'Request failed', details: "permission denied" });
+                return;
             }
             next()
 

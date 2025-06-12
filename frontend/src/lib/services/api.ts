@@ -41,11 +41,8 @@ export async function loginUser(dto : LoginRequestDto) {
 
 
 export async function verifyUser() {
-
-
-    console.log(token);
+    console.log('Verifying user with token:', token);
     
-
     const response = await fetch(`${PUBLIC_BASE_URL}/verify`, {
         method : "GET",
         headers : {
@@ -56,8 +53,23 @@ export async function verifyUser() {
     if (!response.ok) {
         throw new Error('failed to authenticate');
     }
-    return response.text();
+    return response.json(); // Changed from response.text() to response.json()
+}
 
+export async function getUserProfile() {
+    console.log('Fetching user profile with token:', token);
+    
+    const response = await fetch(`${PUBLIC_BASE_URL}/me`, {
+        method: "GET",
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch user profile');
+    }
+    return response.json();
 }
 
 export async function fetchProjects(): Promise<Project[]> {
@@ -119,7 +131,7 @@ export async function fetchGitLog(projectId: number): Promise<GitLogEntry[]> {
 }
 
 // Add a new function to create a project
-export async function createProject(project: Omit<Project, 'id'>): Promise<Project> {
+export async function createProject(project: Omit<Project, 'id'>): Promise<{ message: string, project: Project }> {
     const response = await fetch(`${PUBLIC_BASE_URL}/project`, {
         method: 'POST',
         headers: {
@@ -129,7 +141,8 @@ export async function createProject(project: Omit<Project, 'id'>): Promise<Proje
         body: JSON.stringify(project),
     });
     if (!response.ok) {
-        throw new Error('Failed to create project');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.details || errorData.error || 'Failed to create project');
     }
     return response.json();
 }
@@ -266,3 +279,203 @@ export async function removeCronJob(projectId: number): Promise<void> {
         throw new Error('Failed to remove cron job');
     }
 }
+
+// User Management API functions
+export async function getUsers(): Promise<any[]> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/users`, {
+        method: 'GET',
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch users');
+    }
+    return response.json();
+}
+
+export async function createUser(userData: {
+    username: string;
+    password: string;
+    email?: string;
+    role?: string;
+    permissions?: string[];
+}): Promise<any> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/users`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(userData)
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to create user');
+    }
+    return response.json();
+}
+
+export async function updateUser(userId: number, userData: {
+    username?: string;
+    password?: string;
+    email?: string;
+    role?: string;
+    permissions?: string[];
+    isActive?: boolean;
+}): Promise<any> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/users/${userId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(userData)
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to update user');
+    }
+    return response.json();
+}
+
+export async function deleteUser(userId: number): Promise<void> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to delete user');
+    }
+}
+
+// Execution History API functions
+export async function getExecutionHistory(queryParams?: string): Promise<any> {
+    const url = queryParams ? 
+        `${PUBLIC_BASE_URL}/execution-history?${queryParams}` : 
+        `${PUBLIC_BASE_URL}/execution-history`;
+    
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch execution history');
+    }
+    return response.json();
+}
+
+export async function getExecutionById(executionId: number): Promise<any> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/execution-history/${executionId}`, {
+        method: 'GET',
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch execution details');
+    }
+    return response.json();
+}
+
+// Password change function
+export async function changePassword(currentPassword: string, newPassword: string): Promise<any> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/change-password`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+            currentPassword,
+            newPassword
+        })
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to change password');
+    }
+    return response.json();
+}
+
+// Streaming execution functions
+export async function executeStreamingScript(script: string, args: string[] = [], projectId?: number, stageId?: number): Promise<string> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/execute-stream`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+            script,
+            args,
+            projectId,
+            stageId
+        })
+    });
+
+    if (!response.ok) {
+        try {
+            const errorData = await response.json();
+            // Check if it's a permission error or other specific error
+            if (response.status === 403) {
+                throw new Error(errorData.details || errorData.error || 'Permission denied');
+            } else if (response.status === 401) {
+                throw new Error('Authentication required');
+            } else {
+                throw new Error(errorData.details || errorData.error || `HTTP error ${response.status}`);
+            }
+        } catch (jsonError) {
+            // If we can't parse JSON, fall back to generic message with status
+            throw new Error(`Failed to start streaming execution (${response.status})`);
+        }
+    }
+    
+    const data = await response.json();
+    return data.executionId;
+}
+
+export function createExecutionStream(executionId: string): EventSource {
+    const eventSource = new EventSource(`${PUBLIC_BASE_URL}/execution-stream/${executionId}?token=${encodeURIComponent(token)}`);
+    
+    return eventSource;
+}
+
+// Create an object to export all functions
+export const api = {
+    loginUser,
+    verifyUser,
+    getUserProfile,
+    fetchProjects,
+    fetchProjectDetails,
+    executeStaging,
+    fetchGitLog,
+    createProject,
+    updateProject,
+    checkHealth,
+    fetchGitBranches,
+    switchGitBranch,
+    revertToCommit,
+    switchToHead,
+    setCronJob,
+    getCronJob,
+    removeCronJob,
+    getUsers,
+    createUser,
+    updateUser,
+    deleteUser,
+    getExecutionHistory,
+    getExecutionById,
+    changePassword,
+    executeStreamingScript,
+    createExecutionStream
+};

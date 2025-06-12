@@ -25,6 +25,7 @@
 	},
 	"type": "module",
 	"dependencies": {
-		"lucide-svelte": "^0.408.0"
+		"lucide-svelte": "^0.408.0",
+		"monaco-editor": "^0.44.0"
 	}
 }

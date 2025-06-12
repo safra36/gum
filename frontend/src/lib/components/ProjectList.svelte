@@ -15,9 +15,9 @@
     }
 </script>
 
-<div class="bg-white shadow-lg rounded-lg p-6 max-w-md mx-auto">
-    <h2 class="text-2xl font-bold mb-6 text-gray-800 flex items-center">
-        <Folder class="mr-2" size={24} />
+<div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-6 max-w-md mx-auto">
+    <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-white flex items-center">
+        <Folder class="mr-2 text-gray-600 dark:text-gray-300" size={24} />
         Projects
     </h2>
     <ul class="space-y-2">
@@ -28,24 +28,24 @@
                 out:fly={{y: 20, duration: 300}}
             >
                 <button
-                    class="w-full text-left p-3 rounded-md transition-all duration-200 ease-in-out flex items-center justify-between {selectedProjectId === project.id ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}"
+                    class="w-full text-left p-3 rounded-md transition-all duration-200 ease-in-out flex items-center justify-between {selectedProjectId === project.id ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100'}"
                     on:click={() => selectProject(project)}
                 >
                     <span class="flex items-center">
                         {#if selectedProjectId === project.id}
-                            <FolderOpen class="mr-2" size={20} />
+                            <FolderOpen class="mr-2 text-blue-500 dark:text-blue-400" size={20} />
                         {:else}
-                            <Folder class="mr-2" size={20} />
+                            <Folder class="mr-2 text-gray-600 dark:text-gray-400" size={20} />
                         {/if}
                         {project.title}
                     </span>
-                    <ChevronRight size={16} class={selectedProjectId === project.id ? 'text-blue-500' : 'text-gray-400'} />
+                    <ChevronRight size={16} class={selectedProjectId === project.id ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'} />
                 </button>
             </li>
         {/each}
     </ul>
     {#if projects.length === 0}
-        <p class="text-gray-500 text-center mt-4" in:fade>No projects available.</p>
+        <p class="text-gray-500 dark:text-gray-400 text-center mt-4" in:fade>No projects available.</p>
     {/if}
 </div>
 
