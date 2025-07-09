@@ -31,6 +31,25 @@
     }
   });
 
+  // Watch for project/stage changes and reset console if needed
+  let lastProjectId = projectId;
+  let lastStageId = stageId;
+  
+  $: if (projectId !== lastProjectId || stageId !== lastStageId) {
+    if (lastProjectId !== undefined || lastStageId !== undefined) {
+      // Only reset if we had a previous project/stage (not initial load)
+      console.log('Project/stage changed, resetting console:', { 
+        oldProjectId: lastProjectId, 
+        newProjectId: projectId,
+        oldStageId: lastStageId,
+        newStageId: stageId 
+      });
+      reset();
+    }
+    lastProjectId = projectId;
+    lastStageId = stageId;
+  }
+
   onDestroy(() => {
     stopExecution();
   });
@@ -44,6 +63,8 @@
       entryCounter = 0;
       
       addConsoleOutput('info', `Starting execution...`, Date.now());
+      addConsoleOutput('info', `Project ID: ${projectId || 'Not specified'}`, Date.now());
+      addConsoleOutput('info', `Stage ID: ${stageId || 'Not specified'}`, Date.now());
       
       // Start the execution and get execution ID
       executionId = await api.executeStreamingScript(script, args, projectId, stageId);
@@ -153,6 +174,15 @@
     isExecuting = false;
     executionId = null;
   }
+
+  export function reset() {
+    console.log('StreamingConsole: reset() called');
+    stopExecution();
+    clearConsole();
+  }
+
+  // Export startExecution so parent can trigger it
+  export { startExecution };
 
   function clearConsole() {
     consoleOutput = [];

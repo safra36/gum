@@ -119,6 +119,57 @@ export class ExecutorService {
         }
     }
 
+    public executeScriptWithStreamingAndHistory(
+        script: string, 
+        args: string[], 
+        executionId: string,
+        context: ExecutionContext
+    ): Promise<ExecutionResult> {
+        const startTime = Date.now();
+        
+        return new Promise<ExecutionResult>(async (resolve, reject) => {
+            let executionRecord;
+            
+            try {
+                // Create execution history record
+                executionRecord = await this.executionHistoryService.createExecution({
+                    userId: context.userId,
+                    command: this.substituteArgs(script, args),
+                    workingDirectory: context.workingDirectory,
+                    projectId: context.projectId,
+                    stageId: context.stageId
+                });
+
+                const result = await this.executeScriptWithStreaming(script, args, executionId, context.workingDirectory);
+                const duration = Date.now() - startTime;
+
+                // Update execution history with result
+                await this.executionHistoryService.updateExecution(executionRecord.id, {
+                    status: result.exitCode === 0 ? ExecutionStatus.SUCCESS : ExecutionStatus.FAILED,
+                    output: result.stdout,
+                    errorOutput: result.stderr,
+                    exitCode: result.exitCode,
+                    duration
+                });
+
+                resolve(result);
+            } catch (error) {
+                const duration = Date.now() - startTime;
+                
+                if (executionRecord) {
+                    // Update execution history with error
+                    await this.executionHistoryService.updateExecution(executionRecord.id, {
+                        status: ExecutionStatus.FAILED,
+                        errorOutput: error instanceof Error ? error.message : String(error),
+                        duration
+                    });
+                }
+
+                reject(error);
+            }
+        });
+    }
+
     public executeScriptWithStreaming(
         script: string, 
         args: string[], 

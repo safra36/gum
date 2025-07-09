@@ -1,10 +1,12 @@
 import { Repository } from "typeorm";
 import { AppDataSource } from "../data-source";
 import { ExecutionHistory, ExecutionStatus } from "../entity/ExecutionHistory";
+import { CronJob } from "cron";
 
 export class ExecutionHistoryService {
     private static instance: ExecutionHistoryService;
     private executionHistoryRepository: Repository<ExecutionHistory>;
+    private cleanupJob: CronJob | null = null;
 
     private constructor() {
         this.executionHistoryRepository = AppDataSource.getRepository(ExecutionHistory);
@@ -128,6 +130,40 @@ export class ExecutionHistoryService {
             .where("executedAt < :cutoffDate", { cutoffDate })
             .execute();
 
+        console.log(`Cleaned up ${result.affected || 0} execution history records older than ${olderThanDays} days`);
         return result.affected || 0;
+    }
+
+    public async initializeCleanupSchedule(): Promise<void> {
+        // Run cleanup daily at 2 AM
+        this.cleanupJob = new CronJob('0 0 2 * * *', async () => {
+            try {
+                console.log('Starting daily execution history cleanup...');
+                const deletedCount = await this.cleanupOldExecutions(30);
+                console.log(`Daily cleanup completed: ${deletedCount} records deleted`);
+            } catch (error) {
+                console.error('Error during execution history cleanup:', error);
+            }
+        });
+
+        this.cleanupJob.start();
+        console.log('Execution history cleanup schedule initialized (daily at 2 AM)');
+
+        // Run initial cleanup on startup
+        try {
+            console.log('Running initial execution history cleanup...');
+            const deletedCount = await this.cleanupOldExecutions(30);
+            console.log(`Initial cleanup completed: ${deletedCount} records deleted`);
+        } catch (error) {
+            console.error('Error during initial execution history cleanup:', error);
+        }
+    }
+
+    public stopCleanupSchedule(): void {
+        if (this.cleanupJob) {
+            this.cleanupJob.stop();
+            this.cleanupJob = null;
+            console.log('Execution history cleanup schedule stopped');
+        }
     }
 }

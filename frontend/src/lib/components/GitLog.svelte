@@ -1,12 +1,15 @@
 <script lang="ts">
     import { fade, fly } from 'svelte/transition';
-    import { GitCommit, User, Calendar, MessageSquare, RotateCcw, ChevronRight, ChevronDown } from 'lucide-svelte';
+    import { GitCommit, User, Calendar, MessageSquare, RotateCcw, ChevronRight, ChevronDown, Lock } from 'lucide-svelte';
     import type { GitLogEntry } from "$lib/types";
+    import { permissions } from '$lib/stores/user';
 
     export let gitLog: GitLogEntry[];
     export let onRevertCommit: (commitHash: string) => void;
 
     let expandedCommit: string | null = null;
+    let showPermissionError = false;
+    let permissionErrorTimeout: NodeJS.Timeout;
 
     function toggleExpand(commitHash: string) {
         if (expandedCommit === commitHash) {
@@ -25,6 +28,18 @@
             hour: '2-digit', 
             minute: '2-digit' 
         });
+    }
+
+    function handleRevertClick(commitHash: string) {
+        if (!$permissions.canRevertCommit) {
+            showPermissionError = true;
+            clearTimeout(permissionErrorTimeout);
+            permissionErrorTimeout = setTimeout(() => {
+                showPermissionError = false;
+            }, 3000);
+            return;
+        }
+        onRevertCommit(commitHash);
     }
 </script>
 
@@ -64,11 +79,20 @@
                             {commit.commit.substring(0, 7)}
                         </span>
                         <button
-                            class="bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-bold py-1 px-3 rounded-full transition-colors duration-200 flex items-center"
-                            on:click={() => onRevertCommit(commit.commit)}
+                            class="text-sm font-bold py-1 px-3 rounded-full transition-colors duration-200 flex items-center {$permissions.canRevertCommit 
+                                ? 'bg-yellow-500 hover:bg-yellow-600 text-white' 
+                                : 'bg-gray-300 text-gray-500 cursor-not-allowed'}"
+                            on:click={() => handleRevertClick(commit.commit)}
+                            disabled={!$permissions.canRevertCommit}
+                            title={$permissions.canRevertCommit ? 'Revert to this commit' : 'Permission denied: Cannot revert commits'}
                         >
-                            <RotateCcw size={14} class="mr-1" />
-                            Revert
+                            {#if $permissions.canRevertCommit}
+                                <RotateCcw size={14} class="mr-1" />
+                                Revert
+                            {:else}
+                                <Lock size={14} class="mr-1" />
+                                Revert
+                            {/if}
                         </button>
                     </div>
                 </div>
@@ -93,3 +117,17 @@
         {/each}
     </ul>
 </div>
+
+{#if showPermissionError}
+    <div 
+        class="fixed top-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg shadow-lg z-50"
+        in:fly={{ x: 300, duration: 300 }}
+        out:fly={{ x: 300, duration: 300 }}
+    >
+        <div class="flex items-center">
+            <Lock size={16} class="mr-2" />
+            <span class="font-medium">Permission Denied</span>
+        </div>
+        <p class="text-sm mt-1">You don't have permission to revert commits.</p>
+    </div>
+{/if}

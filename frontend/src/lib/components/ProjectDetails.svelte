@@ -7,10 +7,10 @@
     import GitLog from "./GitLog.svelte";
     import StreamingConsole from "./StreamingConsole.svelte";
     import PermissionGuard from "./PermissionGuard.svelte";
-    import { executeStaging, fetchGitLog, fetchGitBranches, switchGitBranch, revertToCommit, switchToHead, setCronJob, getCronJob, removeCronJob } from "../services/api";
+    import { executeStaging, executeProject, fetchGitLog, fetchGitBranches, switchGitBranch, revertToCommit, switchToHead, setCronJob, getCronJob, removeCronJob } from "../services/api";
     import type { Project, ExecutionResult, GitLogEntry } from "$lib/types";
     import { permissions } from '$lib/stores/user';
-    import { Loader2, FolderOpen, GitBranch, Play, Edit, GitBranchIcon, Check, GitCommit, PenTool, ArrowUp, RotateCcw, Clock, Info, Trash2, Terminal } from "lucide-svelte";
+    import { Loader2, FolderOpen, GitBranch, Play, Edit, GitBranchIcon, Check, GitCommit, PenTool, ArrowUp, RotateCcw, Clock, Info, Trash2, Terminal, Lock } from "lucide-svelte";
 
     export let project: Project;
     export let onEdit: () => void;
@@ -84,10 +84,25 @@
         gitBranches = null;
         gitBranchesError = null;
         branchSwitchError = null;
+        // Reset execution state
+        isExecuting = false;
+        // Reset cron job state
+        cronExpression = "";
+        showCronJobModal = false;
+        cronJobError = null;
+        // Reset revert state
+        isRevertingCommit = false;
+        revertError = null;
     }
 
     $: if (project.id !== previousProjectId) {
         clearResults();
+        // Reset the streaming console when project changes
+        if (streamingConsoleRef && streamingConsoleRef.reset) {
+            streamingConsoleRef.reset();
+        }
+        // Reset execution mode to normal when switching projects (hides console)
+        currentExecutionMode = 'normal';
         // @ts-ignore
         previousProjectId = project.id;
     }
@@ -95,6 +110,11 @@
     $: hasStagingConfig =
         project.stagingConfig &&
         Object.keys(project.stagingConfig).length > 0;
+
+    // Reset streaming console when switching execution modes
+    $: if (currentExecutionMode === 'streaming' && streamingConsoleRef && streamingConsoleRef.reset) {
+        streamingConsoleRef.reset();
+    }
 
     async function handleExecuteStaging() {
         if (!hasStagingConfig) {
@@ -105,7 +125,7 @@
 
         // For streaming mode, trigger the StreamingConsole component's execution
         if (currentExecutionMode === 'streaming') {
-            if (streamingConsoleRef) {
+            if (streamingConsoleRef && streamingConsoleRef.startExecution) {
                 streamingConsoleRef.startExecution();
             }
             return;
@@ -116,7 +136,7 @@
         executionError = null;
         executionResults = null;
         try {
-            const response = await executeStaging(project.stagingConfig.route);
+            const response = await executeProject(project.id);
             executionResults = response.results;
             if (!response.success) {
                 executionError = `Execution completed with errors. Project: ${response.project}`;
@@ -347,10 +367,8 @@
               {project.working_dir}
           </p>
       </div>
-    </PermissionGuard>
 
-    {#if hasStagingConfig}
-        <PermissionGuard requiredPermission="canEdit" variant="full">
+      {#if hasStagingConfig}
           <div
               class="mb-6 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg"
               in:fly={{ y: 20, duration: 300, delay: 500 }}
@@ -367,22 +385,20 @@
                   {project.stagingConfig.args.join(", ") || "None"}
               </p>
           </div>
-        </PermissionGuard>
 
-        <PermissionGuard requiredPermission="canEdit" variant="full">
           <div in:fly={{ y: 20, duration: 300, delay: 600 }}>
               <StageList stages={project.stagingConfig.stages} />
           </div>
-        </PermissionGuard>
 
-    {:else}
-        <p
-            class="text-yellow-600 bg-yellow-100 p-4 rounded-lg"
-            in:fly={{ y: 20, duration: 300, delay: 500 }}
-        >
-            No staging configuration available for this project.
-        </p>
-    {/if}
+      {:else}
+          <p
+              class="text-yellow-600 bg-yellow-100 p-4 rounded-lg"
+              in:fly={{ y: 20, duration: 300, delay: 500 }}
+          >
+              No staging configuration available for this project.
+          </p>
+      {/if}
+    </PermissionGuard>
 
     {#if executionError}
         <div
@@ -434,31 +450,33 @@
     {/if}
 
     <!-- Streaming Console Section -->
-    {#if currentExecutionMode === 'streaming'}
-        <div class="mt-6" in:fly={{ y: 20, duration: 300 }}>
-            <StreamingConsole 
-                bind:this={streamingConsoleRef}
-                script={generateFullScript()}
-                args={project.stagingConfig?.args || []}
-                projectId={project.id}
-                on:executionStarted={(e) => {
-                    console.log('Execution started:', e.detail);
-                    isExecuting = true;
-                    executionError = null;
-                    executionResults = null;
-                }}
-                on:executionCompleted={(e) => {
-                    console.log('Execution completed:', e.detail);
-                    isExecuting = false;
-                }}
-                on:executionError={(e) => {
-                    console.log('Execution error:', e.detail);
-                    isExecuting = false;
-                    executionError = e.detail;
-                }}
-            />
-        </div>
-    {/if}
+    <PermissionGuard requiredPermission="canExecute">
+        {#if currentExecutionMode === 'streaming'}
+            <div class="mt-6" in:fly={{ y: 20, duration: 300 }}>
+                <StreamingConsole 
+                    bind:this={streamingConsoleRef}
+                    script={generateFullScript()}
+                    args={project.stagingConfig?.args || []}
+                    projectId={project.id}
+                    on:executionStarted={(e) => {
+                        console.log('Execution started:', e.detail);
+                        isExecuting = true;
+                        executionError = null;
+                        executionResults = null;
+                    }}
+                    on:executionCompleted={(e) => {
+                        console.log('Execution completed:', e.detail);
+                        isExecuting = false;
+                    }}
+                    on:executionError={(e) => {
+                        console.log('Execution error:', e.detail);
+                        isExecuting = false;
+                        executionError = e.detail;
+                    }}
+                />
+            </div>
+        {/if}
+    </PermissionGuard>
 
     {#if gitLogError}
         <div
@@ -476,97 +494,117 @@
             Project Toolbox
         </h3>
         
-        <!-- Execution Mode Toggle -->
-        <div class="mb-4 flex items-center space-x-4">
-            <label class="flex items-center space-x-2">
-                <input 
-                    type="radio" 
-                    bind:group={currentExecutionMode} 
-                    value="normal"
-                    class="text-blue-600 focus:ring-blue-500"
-                />
-                <span class="text-sm font-medium text-gray-700">Normal Execution</span>
-            </label>
-            <label class="flex items-center space-x-2">
-                <input 
-                    type="radio" 
-                    bind:group={currentExecutionMode} 
-                    value="streaming"
-                    class="text-blue-600 focus:ring-blue-500"
-                />
-                <span class="text-sm font-medium text-gray-700 flex items-center">
-                    <Terminal class="mr-1" size={14} />
-                    Real-time Console
-                </span>
-            </label>
-        </div>
-        
-        <div class="flex flex-wrap gap-3">
-            <PermissionGuard requiredPermission="canExecute">
-              <button
-                  class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 disabled:bg-blue-300 transition-colors duration-200 flex items-center justify-center"
-                  on:click={handleExecuteStaging}
-                  disabled={isExecuting || !hasStagingConfig}
-              >
-                  {#if isExecuting}
-                      <Loader2 class="animate-spin mr-2" size={18} />
-                      Executing...
-                  {:else}
-                      {#if currentExecutionMode === 'streaming'}
-                          <Terminal class="mr-2" size={18} />
-                          Execute with Console
+        <!-- Check if user has any toolbox permissions -->
+        {#if $permissions.canExecute || $permissions.canViewGitLogs || $permissions.canSwitchBranch || $permissions.canSetCron}
+            <!-- Execution Mode Toggle -->
+            {#if $permissions.canExecute}
+                <div class="mb-4 flex items-center space-x-4">
+                    <label class="flex items-center space-x-2">
+                        <input 
+                            type="radio" 
+                            bind:group={currentExecutionMode} 
+                            value="normal"
+                            class="text-blue-600 focus:ring-blue-500"
+                        />
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Normal Execution</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input 
+                            type="radio" 
+                            bind:group={currentExecutionMode} 
+                            value="streaming"
+                            class="text-blue-600 focus:ring-blue-500"
+                        />
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center">
+                            <Terminal class="mr-1" size={14} />
+                            Real-time Console
+                        </span>
+                    </label>
+                </div>
+            {/if}
+            
+            <div class="flex flex-wrap gap-3">
+                {#if $permissions.canExecute}
+                  <button
+                      class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 disabled:bg-blue-300 transition-colors duration-200 flex items-center justify-center"
+                      on:click={handleExecuteStaging}
+                      disabled={isExecuting || !hasStagingConfig}
+                  >
+                      {#if isExecuting}
+                          <Loader2 class="animate-spin mr-2" size={18} />
+                          Executing...
                       {:else}
-                          <Play class="mr-2" size={18} />
-                          Execute Staging
+                          {#if currentExecutionMode === 'streaming'}
+                              <Terminal class="mr-2" size={18} />
+                              Execute with Console
+                          {:else}
+                              <Play class="mr-2" size={18} />
+                              Execute Staging
+                          {/if}
                       {/if}
-                  {/if}
-              </button>
-            </PermissionGuard>
+                  </button>
+                {/if}
 
-            <PermissionGuard requiredPermission="canViewGitLogs">
-              <button
-                  class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 disabled:bg-green-300 transition-colors duration-200 flex items-center justify-center"
-                  on:click={loadGitLog}
-                  disabled={isLoadingGitLog || isLoadingGitBranches}
-              >
-                  {#if isLoadingGitLog}
-                      <Loader2 class="animate-spin mr-2" size={18} />
-                      Loading...
-                  {:else}
-                      <GitCommit class="mr-2" size={18} />
-                      Load Git Log
-                  {/if}
-              </button>
-            </PermissionGuard>
+                {#if $permissions.canViewGitLogs}
+                  <button
+                      class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 disabled:bg-green-300 transition-colors duration-200 flex items-center justify-center"
+                      on:click={loadGitLog}
+                      disabled={isLoadingGitLog || isLoadingGitBranches}
+                  >
+                      {#if isLoadingGitLog}
+                          <Loader2 class="animate-spin mr-2" size={18} />
+                          Loading...
+                      {:else}
+                          <GitCommit class="mr-2" size={18} />
+                          Load Git Log
+                      {/if}
+                  </button>
+                {/if}
 
-            <PermissionGuard requiredPermission="canSwitchBranch">
-              <button
-                  class="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 disabled:bg-purple-300 transition-colors duration-200 flex items-center justify-center"
-                  on:click={loadGitBranches}
-                  disabled={isLoadingGitBranches || isLoadingGitLog}
-              >
-                  {#if isLoadingGitBranches}
-                      <Loader2 class="animate-spin mr-2" size={18} />
-                      Loading...
-                  {:else}
-                      <GitBranch class="mr-2" size={18} />
-                      Load Branches
-                  {/if}
-              </button>
-            </PermissionGuard>
+                {#if $permissions.canSwitchBranch}
+                  <button
+                      class="bg-purple-500 text-white px-4 py-2 rounded-md hover:bg-purple-600 disabled:bg-purple-300 transition-colors duration-200 flex items-center justify-center"
+                      on:click={loadGitBranches}
+                      disabled={isLoadingGitBranches || isLoadingGitLog}
+                  >
+                      {#if isLoadingGitBranches}
+                          <Loader2 class="animate-spin mr-2" size={18} />
+                          Loading...
+                      {:else}
+                          <GitBranch class="mr-2" size={18} />
+                          Load Branches
+                      {/if}
+                  </button>
+                {/if}
 
-            <PermissionGuard requiredPermission="canSetCron">
-              <button
-                  class="bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-600 transition-colors duration-200 flex items-center justify-center"
-                  on:click={() => showCronJobModal = true}
-              >
-                  <Clock class="mr-2" size={18} />
-                  Set Cron Job
-              </button>
-            </PermissionGuard>
+                {#if $permissions.canSetCron}
+                  <button
+                      class="bg-indigo-500 text-white px-4 py-2 rounded-md hover:bg-indigo-600 transition-colors duration-200 flex items-center justify-center"
+                      on:click={() => showCronJobModal = true}
+                  >
+                      <Clock class="mr-2" size={18} />
+                      Set Cron Job
+                  </button>
+                {/if}
 
-            <!-- Additional tools can be added here in the future -->
-        </div>
+                <!-- Additional tools can be added here in the future -->
+            </div>
+        {:else}
+            <!-- Single consolidated access restricted message -->
+            <div class="flex items-center justify-center p-6 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800">
+                <div class="text-center">
+                    <div class="flex justify-center mb-3">
+                        <Lock size={24} class="text-gray-400 dark:text-gray-500" />
+                    </div>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 font-medium">
+                        Access Restricted
+                    </p>
+                    <p class="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                        You do not have permission to access this feature
+                    </p>
+                </div>
+            </div>
+        {/if}
     </div>
 
 

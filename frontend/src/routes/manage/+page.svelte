@@ -8,11 +8,13 @@
     import ThemeToggle from "$lib/components/ThemeToggle.svelte";
     import LoadingSkeleton from "$lib/components/LoadingSkeleton.svelte";
     import PasswordChangeModal from "$lib/components/PasswordChangeModal.svelte";
+    import PermissionGuard from "$lib/components/PermissionGuard.svelte";
     import type { Project } from "$lib/types";
     import { fetchProjects, verifyUser } from "$lib/services/api";
     import { onMount } from "svelte";
     import { Loader2, Plus, X, Users, History, FolderOpen, Search, Filter, LogOut, Menu } from "lucide-svelte";
 	import { authToken } from "../../stores";
+	import { user, permissions } from "$lib/stores/user";
 	import { goto } from "$app/navigation";
     import { toast } from "$lib/stores/toast";
 
@@ -36,7 +38,7 @@
     let showCreateForm = false;
     let showUpdateForm = false;
     let currentView = 'projects'; // 'projects', 'users', 'history'
-    let currentUser: any = null;
+    $: currentUser = $user;
     let searchQuery = '';
     let showMobileMenu = false;
     let showFilters = false;
@@ -59,15 +61,7 @@
 
     onMount(async () => {
         try {
-			const userResponse = await verifyUser();
-            if (typeof userResponse === 'string') {
-                try {
-                    const userData = JSON.parse(userResponse);
-                    currentUser = userData.user;
-                } catch (err) {
-                    console.error('Error parsing user data:', err);
-                }
-            }
+			await verifyUser();
             await loadProjects();
 		} catch(e) {
             console.log("Authentication failed", e);
@@ -138,6 +132,7 @@
     }
 
     function handleProjectSelect(event: CustomEvent<Project>) {
+        console.log('Project selected:', event.detail);
         selectedProject = event.detail;
         showCreateForm = false;
         showUpdateForm = false;
@@ -379,16 +374,18 @@
                     <FolderOpen class="inline mr-2" size={16} />
                     Projects
                 </button>
-                <button
-                    class="py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap transition-colors {currentView === 'history' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:border-gray-300'}"
-                    on:click={() => { switchView('history'); announceViewChange('execution history'); }}
-                    role="tab"
-                    aria-selected={currentView === 'history'}
-                    aria-controls="history-panel"
-                >
-                    <History class="inline mr-2" size={16} />
-                    Execution History
-                </button>
+                {#if $permissions.canViewExecutionHistory}
+                    <button
+                        class="py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap transition-colors {currentView === 'history' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:border-gray-300'}"
+                        on:click={() => { switchView('history'); announceViewChange('execution history'); }}
+                        role="tab"
+                        aria-selected={currentView === 'history'}
+                        aria-controls="history-panel"
+                    >
+                        <History class="inline mr-2" size={16} />
+                        Execution History
+                    </button>
+                {/if}
                 {#if currentUser?.role === 'admin'}
                     <button
                         class="py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap transition-colors {currentView === 'users' ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 hover:border-gray-300'}"
@@ -477,20 +474,22 @@
                             </div>
                             
                             <!-- Create Project Button -->
-                            <button
-                                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
-                                on:click={toggleCreateForm}
-                                disabled={loading}
-                                aria-label={showCreateForm ? 'Cancel creating project' : 'Create new project'}
-                            >
-                                {#if showCreateForm}
-                                    <X size={16} class="mr-2" />
-                                    Cancel
-                                {:else}
-                                    <Plus size={16} class="mr-2" />
-                                    New Project
-                                {/if}
-                            </button>
+                            {#if $permissions.canCreateProject}
+                                <button
+                                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
+                                    on:click={toggleCreateForm}
+                                    disabled={loading}
+                                    aria-label={showCreateForm ? 'Cancel creating project' : 'Create new project'}
+                                >
+                                    {#if showCreateForm}
+                                        <X size={16} class="mr-2" />
+                                        Cancel
+                                    {:else}
+                                        <Plus size={16} class="mr-2" />
+                                        New Project
+                                    {/if}
+                                </button>
+                            {/if}
                         </div>
                     </div>
 
@@ -530,15 +529,17 @@
                                         No project selected
                                     </h3>
                                     <p class="text-gray-600 dark:text-gray-400 mb-4">
-                                        Choose a project from the list to view details or create a new one.
+                                        Choose a project from the list to view details{#if $permissions.canCreateProject} or create a new one{/if}.
                                     </p>
-                                    <button
-                                        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-                                        on:click={toggleCreateForm}
-                                    >
-                                        <Plus size={16} class="mr-2" />
-                                        Create Your First Project
-                                    </button>
+                                    {#if $permissions.canCreateProject}
+                                        <button
+                                            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                                            on:click={toggleCreateForm}
+                                        >
+                                            <Plus size={16} class="mr-2" />
+                                            Create Your First Project
+                                        </button>
+                                    {/if}
                                 </div>
                             {/if}
                         </div>
@@ -547,7 +548,9 @@
             </div>
         {:else if currentView === 'history'}
             <div id="history-panel" role="tabpanel" aria-labelledby="history-tab">
-                <ExecutionHistory />
+                <PermissionGuard requiredPermission="canViewExecutionHistory">
+                    <ExecutionHistory />
+                </PermissionGuard>
             </div>
         {:else if currentView === 'users' && currentUser?.role === 'admin'}
             <div id="users-panel" role="tabpanel" aria-labelledby="users-tab">

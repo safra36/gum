@@ -8,6 +8,7 @@ import { Request, Response } from 'express';
 import { CronJobManager } from "./services/cronjob-manager.service";
 import { StateManager } from "./utils/StateManager";
 import { AuthService } from "./services/auth.service";
+import { ExecutionHistoryService } from "./services/execution-history.service";
 
 // Load environment variables
 dotenv.config();
@@ -56,6 +57,8 @@ async function getDynamicRoutes(): Promise<RouteConfig[]> {
                     } else {
                         try {
                             console.log("executing stage", stage.stageId, config.stages.indexOf(stage));
+                            // Note: Dynamic routes don't have user context, so we can't save execution history
+                            // These routes are deprecated in favor of the new /execute-project endpoint
                             const result = await executorService.executeScript(stage.script, config.args, project.working_dir);
                             results.push({
                                 stageId: stage.stageId,
@@ -99,6 +102,10 @@ async function main() {
         // Initialize default admin user
         const authService = AuthService.getInstance();
         await authService.initializeDefaultAdmin();
+
+        // Initialize execution history cleanup
+        const executionHistoryService = ExecutionHistoryService.getInstance();
+        await executionHistoryService.initializeCleanupSchedule();
 
         const cronJobManager = CronJobManager.getInstance();
         await cronJobManager.initializeCronJobs();

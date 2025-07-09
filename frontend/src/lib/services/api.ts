@@ -116,6 +116,24 @@ export async function executeStaging(route: string): Promise<{ success: boolean,
     return response.json();
 }
 
+export async function executeProject(projectId: number): Promise<{ success: boolean, message: string, project: string, results: ExecutionResult[] }> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/execute-project`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ projectId })
+    });
+
+    if (!response.ok) {
+        const error = new Error(`HTTP error! status: ${response.status}`);
+        (error as any).response = response;
+        throw error;
+    }
+    return response.json();
+}
+
 export async function fetchGitLog(projectId: number): Promise<GitLogEntry[]> {
     const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/gitlog`, {
         method : "GET",
@@ -416,8 +434,6 @@ export async function executeStreamingScript(script: string, args: string[] = []
             "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
-            script,
-            args,
             projectId,
             stageId
         })
@@ -458,6 +474,7 @@ export const api = {
     fetchProjects,
     fetchProjectDetails,
     executeStaging,
+    executeProject,
     fetchGitLog,
     createProject,
     updateProject,

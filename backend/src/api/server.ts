@@ -348,15 +348,106 @@ export class APIServer {
             });
         });
 
+        // Normal execution endpoint by project ID
+        this.app.post("/execute-project", this.authenticateRequest, this.checkAccess(AuthLevels.ExecuteScript), async (req: Request, res: Response) => {
+            try {
+                const { projectId } = req.body;
+                const user = req["user"] as any;
+
+                if (!projectId) {
+                    return res.status(400).json({ error: "Project ID is required" });
+                }
+
+                // Get the project and its staging configuration
+                const project = await this.projectService.getProjectById(projectId);
+                if (!project || !project.stagingConfig) {
+                    return res.status(404).json({ error: "Project or staging configuration not found" });
+                }
+
+                if(StateManager.isExecuting) {
+                    return res.status(400).json({
+                        message: `Another script is being executed, please retry again later`,
+                        project: project.title,
+                        success: false,
+                        results: []
+                    });
+                }
+
+                StateManager.isExecuting = true;
+
+                const results = [];
+                let failed = false;
+                const config = project.stagingConfig;
+
+                for (const stage of config.stages) {
+                    if (failed) {
+                        results.push({
+                            stageId: stage.stageId,
+                            stdout: "",
+                            stderr: "Skipped due to previous stage failure",
+                            exitCode: null
+                        });
+                    } else {
+                        try {
+                            console.log("executing stage", stage.stageId);
+                            const executionContext = {
+                                userId: user.id,
+                                projectId: project.id,
+                                stageId: stage.id,
+                                workingDirectory: project.working_dir
+                            };
+                            const result = await this.executorService.executeScriptWithHistory(stage.script, config.args, executionContext);
+                            results.push({
+                                stageId: stage.stageId,
+                                ...result
+                            });
+
+                            if (result.exitCode !== 0) {
+                                failed = true;
+                            }
+                        } catch (error) {
+                            results.push({
+                                stageId: stage.stageId,
+                                stdout: "",
+                                stderr: error instanceof Error ? error.message : String(error),
+                                exitCode: 1
+                            });
+                            failed = true;
+                        }
+                    }
+                }
+
+                StateManager.isExecuting = false;
+                const status = failed ? 500 : 200;
+                res.status(status).json({
+                    message: `Executed project: ${project.title}`,
+                    project: project.title,
+                    success: !failed,
+                    results: results
+                });
+
+            } catch (error) {
+                StateManager.isExecuting = false;
+                console.error("Execution error:", error);
+                res.status(500).json({ error: "Failed to execute project", details: error.message });
+            }
+        });
+
         // Streaming execution endpoint
         this.app.post("/execute-stream", this.authenticateRequest, this.checkAccess(AuthLevels.ExecuteScript), async (req: Request, res: Response) => {
             try {
-                const { projectId, stageId, script, args = [] } = req.body;
+                const { projectId, stageId } = req.body;
                 const user = req["user"] as any;
                 const executionId = `exec_${Date.now()}_${user.id}`;
 
-                if (!script) {
-                    return res.status(400).json({ error: "Script is required" });
+                if (!projectId) {
+                    return res.status(400).json({ error: "Project ID is required" });
+                }
+
+                // Get the project and its staging configuration
+                const project = await this.projectService.getProjectById(projectId);
+                if (!project || !project.stagingConfig) {
+                    return res.status(404).json({ error: "Project or staging configuration not found" });
                 }
 
                 // Return execution ID immediately for client to connect to SSE
@@ -365,19 +456,36 @@ export class APIServer {
                     message: "Execution started. Connect to /execution-stream/:executionId for real-time logs."
                 });
 
-                // Start execution asynchronously
+                // Start execution asynchronously using project's staging configuration
                 setTimeout(async () => {
                     try {
                         const executorService = ExecutorService.getInstance();
+                        const stagingConfig = project.stagingConfig;
                         
-                        // Get project working directory if projectId is provided
-                        let workingDirectory: string | undefined;
-                        if (projectId) {
-                            const project = await this.projectService.getProjectById(projectId);
-                            workingDirectory = project?.working_dir;
-                        }
+                        // Generate the full script from the project's stages
+                        const scriptParts = [`#!/bin/bash`, `# Combined script for project: ${project.title}`, ``];
                         
-                        await executorService.executeScriptWithStreaming(script, args, executionId, workingDirectory);
+                        stagingConfig.stages.forEach((stage, index) => {
+                            scriptParts.push(`echo "=== Executing Stage ${index + 1}: ${stage.stageId} ==="`);
+                            scriptParts.push(stage.script);
+                            scriptParts.push(`if [ $? -ne 0 ]; then`);
+                            scriptParts.push(`  echo "Stage ${stage.stageId} failed with exit code $?"`);
+                            scriptParts.push(`  exit 1`);
+                            scriptParts.push(`fi`);
+                            scriptParts.push(`echo "Stage ${stage.stageId} completed successfully"`);
+                            scriptParts.push(``);
+                        });
+                        
+                        scriptParts.push(`echo "All stages completed successfully"`);
+                        const fullScript = scriptParts.join('\n');
+                        
+                        const executionContext = {
+                            userId: user.id,
+                            projectId: project.id,
+                            workingDirectory: project.working_dir
+                        };
+                        
+                        await executorService.executeScriptWithStreamingAndHistory(fullScript, stagingConfig.args, executionId, executionContext);
                     } catch (error) {
                         console.error("Execution error:", error);
                     }
@@ -612,7 +720,10 @@ export class APIServer {
                         stageId : stage.stageId
                     }));
 
-                    projectObject.stagingConfig.args = projectObject.stagingConfig.args.map(arg => "Hidden")                    
+                    projectObject.stagingConfig.args = projectObject.stagingConfig.args.map(arg => "Hidden")
+                    projectObject.stagingConfig.route = "Hidden"
+                    projectObject.working_dir = "Hidden"
+                    projectObject.cronJob = "Hidden"
 
                     return projectObject;
                 })
