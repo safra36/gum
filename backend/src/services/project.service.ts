@@ -6,13 +6,17 @@ import { CreateProject, CreateStagingConfig, CreateStage, UpdateStageDTO, Update
 import { CronJob } from "cron";
 import { ExecutorService } from "./executor.service";
 import { CronJobManager } from "./cronjob-manager.service";
+import { ProjectPermissionService } from "./project-permission.service";
 
 export class ProjectService {
 
     private static instance: ProjectService;
     private cronJobs: Map<number, CronJob> = new Map();
+    private projectPermissionService: ProjectPermissionService;
 
-    private constructor() { }
+    private constructor() {
+        this.projectPermissionService = ProjectPermissionService.getInstance();
+    }
 
     public static getInstance(): ProjectService {
         if (!ProjectService.instance) {
@@ -199,6 +203,10 @@ export class ProjectService {
                 }
             }
         });
+    }
+
+    public async getProjectsForUser(userId: number): Promise<Project[]> {
+        return await this.projectPermissionService.getUserProjects(userId);
     }
 
 

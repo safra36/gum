@@ -1,5 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from "typeorm"
 import { ExecutionHistory } from "./ExecutionHistory"
+import { ProjectPermission } from "./ProjectPermission"
 
 export enum UserRole {
     ADMIN = "admin",
@@ -42,4 +43,7 @@ export class User {
 
     @OneToMany(() => ExecutionHistory, executionHistory => executionHistory.user)
     executionHistory: ExecutionHistory[]
+
+    @OneToMany(() => ProjectPermission, projectPermission => projectPermission.user)
+    projectPermissions: ProjectPermission[]
 }

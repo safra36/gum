@@ -466,6 +466,95 @@ export function createExecutionStream(executionId: string): EventSource {
     return eventSource;
 }
 
+// Project Permission API functions
+export async function getUserProjectPermissions(userId: number): Promise<any[]> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/users/${userId}/project-permissions`, {
+        method: 'GET',
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch user project permissions');
+    }
+    return response.json();
+}
+
+export async function setUserProjectPermissions(userId: number, projectPermissions: Array<{ projectId: number; accessLevel: string }>): Promise<void> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/users/${userId}/project-permissions`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ projectPermissions })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to set user project permissions');
+    }
+}
+
+export async function grantProjectAccess(userId: number, projectId: number, accessLevel: string): Promise<any> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project-permissions`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ userId, projectId, accessLevel })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to grant project access');
+    }
+    return response.json();
+}
+
+export async function revokeProjectAccess(userId: number, projectId: number): Promise<void> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project-permissions`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json',
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ userId, projectId })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to revoke project access');
+    }
+}
+
+export async function getProjectUsers(projectId: number): Promise<Array<{ user: any; accessLevel: string }>> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/projects/${projectId}/users`, {
+        method: 'GET',
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch project users');
+    }
+    return response.json();
+}
+
+export async function getAllProjectPermissions(): Promise<any[]> {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project-permissions`, {
+        method: 'GET',
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch all project permissions');
+    }
+    return response.json();
+}
+
 // Create an object to export all functions
 export const api = {
     loginUser,
@@ -494,5 +583,11 @@ export const api = {
     getExecutionById,
     changePassword,
     executeStreamingScript,
-    createExecutionStream
+    createExecutionStream,
+    getUserProjectPermissions,
+    setUserProjectPermissions,
+    grantProjectAccess,
+    revokeProjectAccess,
+    getProjectUsers,
+    getAllProjectPermissions
 };

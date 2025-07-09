@@ -6,6 +6,7 @@ import { StagingConfig } from "./entity/StagingConfig"
 import { User } from "./entity/User"
 import { ExecutionHistory } from "./entity/ExecutionHistory"
 import { Permission } from "./entity/Permission"
+import { ProjectPermission } from "./entity/ProjectPermission"
 
 const entities = [
     Project,
@@ -13,7 +14,8 @@ const entities = [
     StagingConfig,
     User,
     ExecutionHistory,
-    Permission
+    Permission,
+    ProjectPermission
 ]
 
 export const AppDataSource = new DataSource({

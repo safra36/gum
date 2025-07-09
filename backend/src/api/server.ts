@@ -12,6 +12,8 @@ import { AuthService } from "../services/auth.service";
 import { ExecutionHistoryService } from "../services/execution-history.service";
 import { LoginRequestDto, LoginResponseDto, User } from "../types/authentication";
 import { AuthLevels } from "../authentication/auth.config";
+import { ProjectPermissionService } from "../services/project-permission.service";
+import { ProjectAccessLevel } from "../entity/ProjectPermission";
 
 export class APIServer {
     
@@ -24,6 +26,7 @@ export class APIServer {
     private cronJobManager: CronJobManager;
     private authService: AuthService;
     private executionHistoryService: ExecutionHistoryService;
+    private projectPermissionService: ProjectPermissionService;
 
     private constructor() {
         this.app = express();
@@ -32,6 +35,7 @@ export class APIServer {
         this.executorService = ExecutorService.getInstance();
         this.authService = AuthService.getInstance();
         this.executionHistoryService = ExecutionHistoryService.getInstance();
+        this.projectPermissionService = ProjectPermissionService.getInstance();
         this.setupMiddleware();
 
         console.log(this.authService);
@@ -363,7 +367,7 @@ export class APIServer {
         });
 
         // Normal execution endpoint by project ID
-        this.app.post("/execute-project", this.authenticateRequest, this.checkAccess(AuthLevels.ExecuteScript), async (req: Request, res: Response) => {
+        this.app.post("/execute-project", this.authenticateRequest, this.checkAccess(AuthLevels.ExecuteScript), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
             try {
                 const { projectId } = req.body;
                 const user = req["user"] as any;
@@ -448,7 +452,7 @@ export class APIServer {
         });
 
         // Streaming execution endpoint
-        this.app.post("/execute-stream", this.authenticateRequest, this.checkAccess(AuthLevels.ExecuteScript), async (req: Request, res: Response) => {
+        this.app.post("/execute-stream", this.authenticateRequest, this.checkAccess(AuthLevels.ExecuteScript), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
             try {
                 const { projectId, stageId } = req.body;
                 const user = req["user"] as any;
@@ -587,6 +591,82 @@ export class APIServer {
             }
         });
 
+        // Project Permission Management Routes
+        this.app.get('/project-permissions', this.authenticateRequest, this.checkAccess(AuthLevels.ManageUsers), async (req: Request, res: Response) => {
+            try {
+                const permissions = await this.projectPermissionService.getAllProjectPermissions();
+                res.status(200).json(permissions);
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to fetch project permissions', details: error.message });
+            }
+        });
+
+        this.app.post('/project-permissions', this.authenticateRequest, this.checkAccess(AuthLevels.ManageUsers), async (req: Request, res: Response) => {
+            try {
+                const { userId, projectId, accessLevel } = req.body;
+                const grantedBy = req["user"].id;
+
+                if (!userId || !projectId || !accessLevel) {
+                    return res.status(400).json({ error: 'userId, projectId, and accessLevel are required' });
+                }
+
+                const permission = await this.projectPermissionService.grantProjectAccess(
+                    parseInt(userId),
+                    parseInt(projectId),
+                    accessLevel,
+                    grantedBy
+                );
+
+                res.status(201).json({ message: 'Project permission granted successfully', permission });
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to grant project permission', details: error.message });
+            }
+        });
+
+        this.app.delete('/project-permissions/:userId/:projectId', this.authenticateRequest, this.checkAccess(AuthLevels.ManageUsers), async (req: Request, res: Response) => {
+            try {
+                const userId = parseInt(req.params.userId);
+                const projectId = parseInt(req.params.projectId);
+
+                await this.projectPermissionService.revokeProjectAccess(userId, projectId);
+                res.status(200).json({ message: 'Project permission revoked successfully' });
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to revoke project permission', details: error.message });
+            }
+        });
+
+        this.app.put('/users/:userId/project-permissions', this.authenticateRequest, this.checkAccess(AuthLevels.ManageUsers), async (req: Request, res: Response) => {
+            try {
+                const userId = parseInt(req.params.userId);
+                const { projectPermissions } = req.body;
+                const grantedBy = req["user"].id;
+
+                if (!Array.isArray(projectPermissions)) {
+                    return res.status(400).json({ error: 'projectPermissions must be an array' });
+                }
+
+                await this.projectPermissionService.setUserProjectPermissions(
+                    userId,
+                    projectPermissions,
+                    grantedBy
+                );
+
+                res.status(200).json({ message: 'Project permissions updated successfully' });
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to update project permissions', details: error.message });
+            }
+        });
+
+        this.app.get('/users/:userId/project-permissions', this.authenticateRequest, this.checkAccess(AuthLevels.ManageUsers), async (req: Request, res: Response) => {
+            try {
+                const userId = parseInt(req.params.userId);
+                const permissions = await this.projectPermissionService.getUserProjectPermissions(userId);
+                res.status(200).json(permissions);
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to fetch user project permissions', details: error.message });
+            }
+        });
+
         // Execution History Routes
         this.app.get('/execution-history', this.authenticateRequest, this.checkAccess(AuthLevels.ViewExecutionHistory), async (req: Request, res: Response) => {
             try {
@@ -659,7 +739,7 @@ export class APIServer {
         });
 
 
-        this.app.get('/project/:id/branches', this.authenticateRequest, this.checkAccess(AuthLevels.SwitchBranch), async (req: Request, res: Response) => {
+        this.app.get('/project/:id/branches', this.authenticateRequest, this.checkAccess(AuthLevels.SwitchBranch), this.checkProjectAccess(ProjectAccessLevel.VIEW), async (req: Request, res: Response) => {
 
 
             try {
@@ -716,10 +796,12 @@ export class APIServer {
         // Fetch all stages route
         this.app.get('/stages', this.authenticateRequest, async (req: Request, res: Response) => {
             try {
-                const projects = await this.projectService.getAllProjects();
+                const user = req["user"] as any;
+                
+                // Get only projects the user has access to
+                const projects = await this.projectService.getProjectsForUser(user.id);
                 const projectDTOs = projects.map(this.projectToDTO);
 
-                const user = req["user"] as any;
                 const allowed = await this.authService.hasPermission(
                     user.id,
                     AuthLevels.EditProject
@@ -797,7 +879,7 @@ export class APIServer {
             }
         });
 
-        this.app.get('/project/:id/gitlog', this.authenticateRequest, this.checkAccess(AuthLevels.GetGitLog), async (req: Request, res: Response) => {
+        this.app.get('/project/:id/gitlog', this.authenticateRequest, this.checkAccess(AuthLevels.GetGitLog), this.checkProjectAccess(ProjectAccessLevel.VIEW), async (req: Request, res: Response) => {
             try {
                 const projectId = parseInt(req.params.id);
                 const project = await this.projectService.getProjectById(projectId);
@@ -1019,6 +1101,34 @@ export class APIServer {
 
             if(!allowed) {
                 res.status(403).json({ error: 'Request failed', details: "permission denied" });
+                return;
+            }
+            next()
+
+        }
+
+    }
+
+    private checkProjectAccess(accessLevel: ProjectAccessLevel) {
+
+        return async (req : Request , res : Response, next : NextFunction) => {
+
+            const user = req["user"] as any;
+            const projectId = parseInt(req.params.projectId || req.params.id || req.body.projectId);
+
+            if (!projectId) {
+                res.status(400).json({ error: 'Project ID is required' });
+                return;
+            }
+
+            const hasAccess = await this.projectPermissionService.hasProjectAccess(
+                user.id,
+                projectId,
+                accessLevel
+            );
+
+            if(!hasAccess) {
+                res.status(403).json({ error: 'Access denied', details: "insufficient project permissions" });
                 return;
             }
             next()

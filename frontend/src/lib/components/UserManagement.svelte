@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api } from '$lib/services/api';
-  import type { User } from '$lib/types';
+  import type { User, Project } from '$lib/types';
 
   interface UserData {
     id: number;
@@ -23,9 +23,13 @@
   }
 
   let users: UserData[] = [];
+  let projects: Project[] = [];
   let showCreateModal = false;
   let showEditModal = false;
+  let showProjectPermissionsModal = false;
   let editingUser: UserData | null = null;
+  let managingProjectPermissionsUser: UserData | null = null;
+  let userProjectPermissions: Array<{ projectId: number; accessLevel: string }> = [];
   let loading = false;
   let error = '';
 
@@ -53,6 +57,7 @@
 
   onMount(async () => {
     await loadUsers();
+    await loadProjects();
   });
 
   async function loadUsers() {
@@ -65,6 +70,14 @@
       console.error(err);
     } finally {
       loading = false;
+    }
+  }
+
+  async function loadProjects() {
+    try {
+      projects = await api.fetchProjects();
+    } catch (err) {
+      console.error('Failed to load projects:', err);
     }
   }
 
@@ -144,6 +157,51 @@
       newUser.permissions = [...newUser.permissions];
     }
   }
+
+  async function openProjectPermissionsModal(user: UserData) {
+    try {
+      managingProjectPermissionsUser = user;
+      userProjectPermissions = await api.getUserProjectPermissions(user.id);
+      showProjectPermissionsModal = true;
+    } catch (err) {
+      error = 'Failed to load project permissions';
+      console.error(err);
+    }
+  }
+
+  async function saveProjectPermissions() {
+    if (!managingProjectPermissionsUser) return;
+    
+    try {
+      error = '';
+      await api.setUserProjectPermissions(managingProjectPermissionsUser.id, userProjectPermissions);
+      showProjectPermissionsModal = false;
+      managingProjectPermissionsUser = null;
+      userProjectPermissions = [];
+    } catch (err) {
+      error = 'Failed to save project permissions';
+      console.error(err);
+    }
+  }
+
+  function updateProjectPermission(projectId: number, accessLevel: string) {
+    const existingIndex = userProjectPermissions.findIndex(p => p.projectId === projectId);
+    if (existingIndex !== -1) {
+      if (accessLevel === 'none') {
+        userProjectPermissions.splice(existingIndex, 1);
+      } else {
+        userProjectPermissions[existingIndex].accessLevel = accessLevel;
+      }
+    } else if (accessLevel !== 'none') {
+      userProjectPermissions.push({ projectId, accessLevel });
+    }
+    userProjectPermissions = [...userProjectPermissions];
+  }
+
+  function getProjectPermissionLevel(projectId: number): string {
+    const permission = userProjectPermissions.find(p => p.projectId === projectId);
+    return permission?.accessLevel || 'none';
+  }
 </script>
 
 <div class="space-y-6">
@@ -194,6 +252,12 @@
                   class="text-blue-600 hover:text-blue-800"
                 >
                   Edit
+                </button>
+                <button 
+                  on:click={() => openProjectPermissionsModal(user)}
+                  class="text-green-600 hover:text-green-800"
+                >
+                  Projects
                 </button>
                 <button 
                   on:click={() => deleteUser(user.id)}
@@ -377,6 +441,79 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+{/if}
+
+<!-- Project Permissions Modal -->
+{#if showProjectPermissionsModal && managingProjectPermissionsUser}
+  <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-10 mx-auto p-5 border dark:border-gray-600 w-4/5 max-w-4xl shadow-lg rounded-md bg-white dark:bg-gray-800">
+      <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
+        Project Permissions for {managingProjectPermissionsUser.username}
+      </h3>
+      
+      <div class="space-y-4 max-h-96 overflow-y-auto">
+        {#each projects as project}
+          <div class="border border-gray-200 dark:border-gray-600 rounded-lg p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <h4 class="font-medium text-gray-900 dark:text-white">{project.title}</h4>
+                <p class="text-sm text-gray-600 dark:text-gray-400">{project.working_dir}</p>
+              </div>
+              <div class="flex items-center space-x-2">
+                <label class="text-sm text-gray-700 dark:text-gray-300">Access Level:</label>
+                <select 
+                  value={getProjectPermissionLevel(project.id)}
+                  on:change={(e) => {
+                    const target = e.currentTarget;
+                    updateProjectPermission(project.id, target.value);
+                  }}
+                  class="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  <option value="none">None</option>
+                  <option value="view">View</option>
+                  <option value="execute">Execute</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+            </div>
+            
+            <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {#if getProjectPermissionLevel(project.id) === 'view'}
+                Can view project details and logs
+              {:else if getProjectPermissionLevel(project.id) === 'execute'}
+                Can view and execute project stages
+              {:else if getProjectPermissionLevel(project.id) === 'admin'}
+                Can view, execute, and modify project settings
+              {:else}
+                No access to this project
+              {/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+      
+      <div class="flex justify-end space-x-2 mt-6">
+        <button 
+          type="button"
+          on:click={() => { 
+            showProjectPermissionsModal = false; 
+            managingProjectPermissionsUser = null; 
+            userProjectPermissions = []; 
+          }}
+          class="px-4 py-2 text-gray-600 dark:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
+        >
+          Cancel
+        </button>
+        <button 
+          type="button"
+          on:click={saveProjectPermissions}
+          class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+        >
+          Save Permissions
+        </button>
+      </div>
     </div>
   </div>
 {/if}

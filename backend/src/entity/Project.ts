@@ -1,5 +1,6 @@
-import { Column, Entity, OneToOne, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, OneToOne, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 import { StagingConfig } from "./StagingConfig";
+import { ProjectPermission } from "./ProjectPermission";
 
 @Entity()
 export class Project {
@@ -18,5 +19,8 @@ export class Project {
 
     @Column({ nullable: true })
     cronJob: string;
+
+    @OneToMany(() => ProjectPermission, projectPermission => projectPermission.project)
+    projectPermissions: ProjectPermission[];
     
 }
