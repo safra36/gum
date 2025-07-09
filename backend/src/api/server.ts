@@ -45,20 +45,34 @@ export class APIServer {
         return APIServer.instance;
     }
 
+    private getCorsOrigins(): string[] {
+        const defaultOrigins = [
+            "http://localhost:5173",
+            "http://localhost:4173", 
+            "http://localhost:3000",
+            "http://localhost:8080",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:4173",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:8080"
+        ];
+
+        const envOrigins = process.env.CORS_ORIGINS;
+        if (envOrigins) {
+            const customOrigins = envOrigins.split(',').map(origin => origin.trim()).filter(origin => origin.length > 0);
+            console.log('Using custom CORS origins from environment:', customOrigins);
+            return customOrigins;
+        }
+
+        console.log('Using default CORS origins');
+        return defaultOrigins;
+    }
+
     private setupMiddleware(): void {
         this.app.use(express.json());
         this.app.use(express.urlencoded({ extended: true }));
         this.app.use(cors({
-            origin: [
-                "http://localhost:5173",
-                "http://localhost:4173", 
-                "http://localhost:3000",
-                "http://localhost:8080",
-                "http://127.0.0.1:5173",
-                "http://127.0.0.1:4173",
-                "http://127.0.0.1:3000",
-                "http://127.0.0.1:8080"
-            ],
+            origin: this.getCorsOrigins(),
             credentials: true,
             methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
             allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
