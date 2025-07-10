@@ -28,10 +28,7 @@
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
     
-    // Comments (# to end of line)
-    highlighted = highlighted.replace(/(#.*$)/gm, '<span class="comment">$1</span>');
-    
-    // Strings (double and single quotes)
+    // Strings (double and single quotes) - Process before comments to avoid conflicts
     highlighted = highlighted.replace(/"([^"\\]|\\.)*"/g, '<span class="string">$&</span>');
     highlighted = highlighted.replace(/'([^'\\]|\\.)*'/g, '<span class="string">$&</span>');
     
@@ -48,6 +45,9 @@
     // Operators and symbols (only specific shell operators)
     highlighted = highlighted.replace(/[|&;()]/g, '<span class="operator">$&</span>');
     highlighted = highlighted.replace(/\s+(&gt;|&lt;)\s+/g, ' <span class="operator">$1</span> ');
+    
+    // Comments (# to end of line) - Simple approach that works with all browsers
+    highlighted = highlighted.replace(/(^|[^<>])#([^<>]*?)$/gm, '$1<span class="comment">#$2</span>');
     
     return highlighted;
   }
