@@ -4,6 +4,8 @@ import { Repository } from "typeorm";
 import { AppDataSource } from "../data-source";
 import { User, UserRole } from "../entity/User";
 import { Permission, PermissionType } from "../entity/Permission";
+import { ProjectPermission } from "../entity/ProjectPermission";
+import { ExecutionHistory } from "../entity/ExecutionHistory";
 import { AuthLevels } from "../authentication/auth.config";
 
 interface JwtPayload {
@@ -17,11 +19,15 @@ export class AuthService {
     private secretKey: string;
     private userRepository: Repository<User>;
     private permissionRepository: Repository<Permission>;
+    private projectPermissionRepository: Repository<ProjectPermission>;
+    private executionHistoryRepository: Repository<ExecutionHistory>;
 
     private constructor() {
         this.secretKey = process.env.JWT_SECRET_KEY || "your-secret-key";
         this.userRepository = AppDataSource.getRepository(User);
         this.permissionRepository = AppDataSource.getRepository(Permission);
+        this.projectPermissionRepository = AppDataSource.getRepository(ProjectPermission);
+        this.executionHistoryRepository = AppDataSource.getRepository(ExecutionHistory);
     }
 
     public static getInstance(): AuthService {
@@ -74,7 +80,39 @@ export class AuthService {
     }
 
     public async deleteUser(userId: number): Promise<void> {
-        await this.userRepository.delete(userId);
+        try {
+            // Check if user exists
+            const user = await this.userRepository.findOne({ where: { id: userId } });
+            if (!user) {
+                throw new Error("User not found");
+            }
+
+            // Prevent deletion of the last admin user
+            if (user.role === UserRole.ADMIN) {
+                const adminCount = await this.userRepository.count({ where: { role: UserRole.ADMIN } });
+                if (adminCount <= 1) {
+                    throw new Error("Cannot delete the last admin user");
+                }
+            }
+
+            // Start transaction to ensure all deletions succeed or fail together
+            await AppDataSource.transaction(async manager => {
+                // Delete all project permissions for this user
+                await manager.delete(ProjectPermission, { userId });
+
+                // Delete all permissions for this user
+                await manager.delete(Permission, { userId });
+
+                // Delete all execution history for this user
+                await manager.delete(ExecutionHistory, { userId });
+
+                // Finally delete the user
+                await manager.delete(User, userId);
+            });
+        } catch (error) {
+            console.error("User deletion failed:", error);
+            throw error;
+        }
     }
 
     public async getAllUsers(): Promise<User[]> {

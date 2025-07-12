@@ -367,7 +367,8 @@ export async function deleteUser(userId: number): Promise<void> {
     });
 
     if (!response.ok) {
-        throw new Error('Failed to delete user');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.details || 'Failed to delete user');
     }
 }
 

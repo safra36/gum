@@ -116,14 +116,14 @@
   }
 
   async function deleteUser(userId: number) {
-    if (!confirm('Are you sure you want to delete this user?')) return;
+    if (!confirm('Are you sure you want to delete this user? This will permanently remove all their project permissions and execution history.')) return;
     
     try {
       error = '';
       await api.deleteUser(userId);
       await loadUsers();
     } catch (err) {
-      error = 'Failed to delete user';
+      error = (err as Error).message || 'Failed to delete user';
       console.error(err);
     }
   }
