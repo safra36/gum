@@ -178,19 +178,13 @@
   
   .text-layer {
     background: transparent;
-    color: #374151;
+    color: transparent;
     z-index: 2;
     caret-color: #374151;
   }
   
   :global(.dark) .text-layer {
-    color: #d1d5db;
     caret-color: #d1d5db;
-  }
-  
-  /* Make text transparent but keep caret visible */
-  .text-layer {
-    color: transparent;
   }
   
   .text-layer::selection {
