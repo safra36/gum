@@ -83,6 +83,9 @@
     }
   }
 
+  let reconnectAttempts = 0;
+  const MAX_RECONNECT_ATTEMPTS = 5;
+
   function connectToStream(execId: string) {
     if (eventSource) {
       eventSource.close();
@@ -93,6 +96,7 @@
 
       eventSource.onopen = () => {
         addConsoleOutput('info', 'Connected to execution stream', Date.now());
+        reconnectAttempts = 0; // Reset on successful connection
       };
 
       eventSource.onmessage = (event) => {
@@ -104,17 +108,52 @@
         }
       };
 
-      eventSource.onerror = (error) => {
+      eventSource.onerror = async (error) => {
         console.error('Stream error:', error);
         addConsoleOutput('error', 'Connection to execution stream lost', Date.now());
         
-        // Attempt to reconnect after a short delay
-        setTimeout(() => {
-          if (isExecuting && executionId) {
-            addConsoleOutput('info', 'Attempting to reconnect...', Date.now());
-            connectToStream(executionId);
+        // Check if we should attempt to reconnect
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS && isExecuting && executionId) {
+          reconnectAttempts++;
+          
+          try {
+            // Check execution status before attempting to reconnect
+            const execution = await api.getExecutionById(parseInt(executionId));
+            
+            if (execution && execution.status === 'running') {
+              const delay = Math.min(2000 * reconnectAttempts, 10000); // Exponential backoff with max 10s
+              addConsoleOutput('info', `Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`, Date.now());
+              
+              setTimeout(() => {
+                if (isExecuting && executionId) {
+                  connectToStream(executionId);
+                }
+              }, delay);
+            } else {
+              // Execution is no longer running
+              addConsoleOutput('info', 'Execution has completed. No reconnection needed.', Date.now());
+              isExecuting = false;
+              executionId = null;
+            }
+          } catch (statusError) {
+            console.error('Failed to check execution status:', statusError);
+            // If we can't check status, fall back to limited retry
+            const delay = Math.min(2000 * reconnectAttempts, 10000);
+            addConsoleOutput('info', `Unable to verify execution status. Retrying connection (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`, Date.now());
+            
+            setTimeout(() => {
+              if (isExecuting && executionId) {
+                connectToStream(executionId);
+              }
+            }, delay);
           }
-        }, 2000);
+        } else {
+          // Max retries reached or not executing
+          if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+            addConsoleOutput('error', 'Maximum reconnection attempts reached. Connection failed.', Date.now());
+          }
+          isExecuting = false;
+        }
       };
     } catch (error) {
       console.error('Failed to connect to stream:', error);

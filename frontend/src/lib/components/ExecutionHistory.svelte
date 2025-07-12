@@ -240,19 +240,19 @@
         <button 
           on:click={() => { currentPage--; loadExecutionHistory(); }}
           disabled={currentPage === 1}
-          class="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="px-4 py-2 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Previous
         </button>
         
-        <span class="text-sm text-gray-600">
+        <span class="text-sm text-gray-600 dark:text-gray-300">
           Page {currentPage} of {totalPages}
         </span>
         
         <button 
           on:click={() => { currentPage++; loadExecutionHistory(); }}
           disabled={currentPage === totalPages}
-          class="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="px-4 py-2 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Next
         </button>
@@ -266,10 +266,10 @@
   <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
     <div class="relative top-10 mx-auto p-5 border dark:border-gray-600 w-4/5 max-w-4xl shadow-lg rounded-md bg-white dark:bg-gray-800">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-bold text-gray-900">Execution Details</h3>
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white">Execution Details</h3>
         <button 
           on:click={() => { showDetailsModal = false; selectedExecution = null; }}
-          class="text-gray-600 hover:text-gray-800"
+          class="text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
         >
           ×
         </button>
@@ -278,12 +278,12 @@
       <div class="space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700">User</label>
-            <p class="text-sm text-gray-900">{selectedExecution.user.username}</p>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">User</label>
+            <p class="text-sm text-gray-900 dark:text-gray-100">{selectedExecution.user.username}</p>
           </div>
           
           <div>
-            <label class="block text-sm font-medium text-gray-700">Status</label>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
             <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {getStatusColor(selectedExecution.status)}">
               {selectedExecution.status.toUpperCase()}
             </span>
@@ -291,68 +291,68 @@
           
           {#if selectedExecution.project}
             <div>
-              <label class="block text-sm font-medium text-gray-700">Project</label>
-              <p class="text-sm text-gray-900">{selectedExecution.project.title}</p>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Project</label>
+              <p class="text-sm text-gray-900 dark:text-gray-100">{selectedExecution.project.title}</p>
             </div>
           {/if}
           
           {#if selectedExecution.stage}
             <div>
-              <label class="block text-sm font-medium text-gray-700">Stage</label>
-              <p class="text-sm text-gray-900">{selectedExecution.stage.stageId}</p>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Stage</label>
+              <p class="text-sm text-gray-900 dark:text-gray-100">{selectedExecution.stage.stageId}</p>
             </div>
           {/if}
           
           <div>
-            <label class="block text-sm font-medium text-gray-700">Executed At</label>
-            <p class="text-sm text-gray-900">{formatDate(selectedExecution.executedAt)}</p>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Executed At</label>
+            <p class="text-sm text-gray-900 dark:text-gray-100">{formatDate(selectedExecution.executedAt)}</p>
           </div>
           
           {#if selectedExecution.finishedAt}
             <div>
-              <label class="block text-sm font-medium text-gray-700">Finished At</label>
-              <p class="text-sm text-gray-900">{formatDate(selectedExecution.finishedAt)}</p>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Finished At</label>
+              <p class="text-sm text-gray-900 dark:text-gray-100">{formatDate(selectedExecution.finishedAt)}</p>
             </div>
           {/if}
           
           {#if selectedExecution.duration}
             <div>
-              <label class="block text-sm font-medium text-gray-700">Duration</label>
-              <p class="text-sm text-gray-900">{formatDuration(selectedExecution.duration)}</p>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Duration</label>
+              <p class="text-sm text-gray-900 dark:text-gray-100">{formatDuration(selectedExecution.duration)}</p>
             </div>
           {/if}
           
           {#if selectedExecution.exitCode !== undefined}
             <div>
-              <label class="block text-sm font-medium text-gray-700">Exit Code</label>
-              <p class="text-sm text-gray-900">{selectedExecution.exitCode}</p>
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Exit Code</label>
+              <p class="text-sm text-gray-900 dark:text-gray-100">{selectedExecution.exitCode}</p>
             </div>
           {/if}
         </div>
         
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Command</label>
-          <pre class="bg-gray-100 p-3 rounded-md text-sm font-mono overflow-x-auto">{selectedExecution.command}</pre>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Command</label>
+          <pre class="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 p-3 rounded-md text-sm font-mono overflow-x-auto">{selectedExecution.command}</pre>
         </div>
         
         {#if selectedExecution.workingDirectory}
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Working Directory</label>
-            <p class="text-sm text-gray-900 font-mono">{selectedExecution.workingDirectory}</p>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Working Directory</label>
+            <p class="text-sm text-gray-900 dark:text-gray-100 font-mono">{selectedExecution.workingDirectory}</p>
           </div>
         {/if}
         
         {#if selectedExecution.output}
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Output</label>
-            <pre class="bg-gray-100 p-3 rounded-md text-sm font-mono max-h-40 overflow-y-auto">{selectedExecution.output}</pre>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Output</label>
+            <pre class="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 p-3 rounded-md text-sm font-mono max-h-40 overflow-y-auto">{selectedExecution.output}</pre>
           </div>
         {/if}
         
         {#if selectedExecution.errorOutput}
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Error Output</label>
-            <pre class="bg-red-50 p-3 rounded-md text-sm font-mono max-h-40 overflow-y-auto text-red-800">{selectedExecution.errorOutput}</pre>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Error Output</label>
+            <pre class="bg-red-50 dark:bg-red-900 p-3 rounded-md text-sm font-mono max-h-40 overflow-y-auto text-red-800 dark:text-red-200">{selectedExecution.errorOutput}</pre>
           </div>
         {/if}
       </div>

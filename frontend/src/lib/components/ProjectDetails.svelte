@@ -412,37 +412,37 @@
 
     {#if executionResults}
         <div class="mt-6" in:fly={{ y: 20, duration: 300 }}>
-            <h3 class="text-2xl font-semibold mb-4 text-gray-800">
+            <h3 class="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">
                 Execution Results
             </h3>
             {#each executionResults as result}
                 <div
                     class="mb-4 p-4 {result.exitCode === 0
-                        ? 'bg-green-100 border-green-400'
-                        : 'bg-red-100 border-red-400'} rounded-lg border"
+                        ? 'bg-green-100 dark:bg-green-900/20 border-green-400 dark:border-green-500'
+                        : 'bg-red-100 dark:bg-red-900/20 border-red-400 dark:border-red-500'} rounded-lg border"
                 >
-                    <p class="font-bold text-lg mb-2">
+                    <p class="font-bold text-lg mb-2 text-gray-900 dark:text-white">
                         Stage: {result.stageId}
                     </p>
-                    <p class="mb-2">
+                    <p class="mb-2 text-gray-800 dark:text-gray-200">
                         Exit Code: <span
                             class={result.exitCode === 0
-                                ? "text-green-700"
-                                : "text-red-700"}
+                                ? "text-green-700 dark:text-green-300"
+                                : "text-red-700 dark:text-red-300"}
                             >{result.exitCode !== null
                                 ? result.exitCode
                                 : "N/A"}</span
                         >
                     </p>
                     {#if result.stdout}
-                        <p class="font-semibold mt-3">Standard Output:</p>
+                        <p class="font-semibold mt-3 text-gray-800 dark:text-gray-200">Standard Output:</p>
                         <pre
-                            class="bg-white p-3 rounded-lg mt-1 overflow-x-auto">{result.stdout}</pre>
+                            class="bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 p-3 rounded-lg mt-1 overflow-x-auto">{result.stdout}</pre>
                     {/if}
                     {#if result.stderr}
-                        <p class="font-semibold mt-3">Standard Error:</p>
+                        <p class="font-semibold mt-3 text-gray-800 dark:text-gray-200">Standard Error:</p>
                         <pre
-                            class="bg-white p-3 rounded-lg mt-1 overflow-x-auto">{result.stderr}</pre>
+                            class="bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 p-3 rounded-lg mt-1 overflow-x-auto">{result.stderr}</pre>
                     {/if}
                 </div>
             {/each}
@@ -707,8 +707,8 @@
 
 {#if showCronJobModal}
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" in:fade={{ duration: 200 }}>
-        <div class="bg-white rounded-lg p-6 w-full max-w-md" in:fly={{ y: 20, duration: 300 }}>
-            <h2 class="text-2xl font-bold mb-4 flex items-center">
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md" in:fly={{ y: 20, duration: 300 }}>
+            <h2 class="text-2xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
                 <Clock class="mr-2 text-indigo-500" size={24} />
                 {project.cronJob ? 'Update Cron Job' : 'Set Cron Job'}
             </h2>
@@ -720,11 +720,11 @@
                 {/if}
             </p>
             <div class="mb-4">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Presets:</label>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Presets:</label>
                 <div class="flex flex-wrap gap-2">
                     {#each cronPresets as preset}
                         <button
-                            class="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm hover:bg-indigo-200 transition-colors duration-200"
+                            class="px-3 py-1 bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded-full text-sm hover:bg-indigo-200 dark:hover:bg-indigo-800 transition-colors duration-200"
                             on:click={() => selectPreset(preset.value)}
                         >
                             {preset.label}
@@ -733,32 +733,32 @@
                 </div>
             </div>
             <div class="mb-4">
-                <label for="cronExpression" class="block text-sm font-medium text-gray-700 mb-2">Cron Expression:</label>
+                <label for="cronExpression" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Cron Expression:</label>
                 <input
                     id="cronExpression"
                     type="text"
                     bind:value={cronExpression}
                     placeholder="Enter cron expression (e.g. 0 */15 * * * *)"
-                    class="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500 transition-all duration-200 {isValidCron ? 'border-green-500' : 'border-red-500'}"
+                    class="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-all duration-200 {isValidCron ? 'border-green-500' : 'border-red-500'}"
                 />
-                <p class="mt-1 text-sm text-gray-500 flex items-center">
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400 flex items-center">
                     <Info size={14} class="mr-1" />
                     Format: seconds minutes hours day-of-month month day-of-week
                 </p>
             </div>
             {#if cronJobError}
-                <p class="text-red-500 mb-4">{cronJobError}</p>
+                <p class="text-red-500 dark:text-red-400 mb-4">{cronJobError}</p>
             {/if}
             <div class="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2">
                 <button
-                    class="w-full sm:w-auto px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors duration-200"
+                    class="w-full sm:w-auto px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors duration-200"
                     on:click={() => showCronJobModal = false}
                 >
                     Cancel
                 </button>
                 {#if project.cronJob}
                     <button
-                        class="w-full sm:w-auto px-4 py-2 border border-red-500 text-red-500 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:hover:bg-transparent transition-colors duration-200 flex items-center justify-center"
+                        class="w-full sm:w-auto px-4 py-2 border border-red-500 dark:border-red-400 text-red-500 dark:text-red-400 rounded-md hover:bg-red-50 dark:hover:bg-red-900 disabled:opacity-50 disabled:hover:bg-transparent transition-colors duration-200 flex items-center justify-center"
                         on:click={handleRemoveCronJob}
                         disabled={isRemovingCronJob || isSettingCronJob}
                     >
