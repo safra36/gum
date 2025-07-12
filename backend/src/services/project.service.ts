@@ -267,8 +267,8 @@ export class ProjectService {
         }
     }
 
-    public async executeProjectStaging(projectId: number): Promise<void> {
-        console.log(`Executing staging for project ${projectId}`);
+    public async executeProjectStaging(projectId: number, userId?: number): Promise<void> {
+        console.log(`*** PROJECT SERVICE: Executing staging for project ${projectId} ***`);
         
         try {
             // 1. Fetch the project
@@ -283,11 +283,12 @@ export class ProjectService {
                 throw new Error(`No staging configuration found for project ${projectId}`);
             }
 
-            // 3. Execute each stage in the staging configuration
+            // 3. Execute each stage in the staging configuration with variable passing
             const executorService = ExecutorService.getInstance();
             const results: ExecutionResult[] = [];
             let failed = false;
-
+            let sharedVariables = new Map<string, string>();
+            
             for (const stage of stagingConfig.stages) {
                 if (failed) {
                     results.push({
@@ -299,7 +300,23 @@ export class ProjectService {
                 } else {
                     try {
                         console.log(`Executing stage ${stage.stageId} for project ${projectId}`);
-                        const result = await executorService.executeScript(stage.script, stagingConfig.args);
+                        console.log('=== CALLING executeScriptWithVariables ===');
+                        
+                        // Log available variables
+                        if (sharedVariables.size > 0) {
+                            console.log(`Available variables for stage ${stage.stageId}:`, Object.fromEntries(sharedVariables));
+                        }
+                        
+                        const { result, variables } = await executorService.executeScriptWithVariables(
+                            stage.script, 
+                            stagingConfig.args, 
+                            project.working_dir, 
+                            sharedVariables
+                        );
+                        
+                        // Update shared variables for next stage
+                        sharedVariables = variables;
+                        
                         results.push({
                             stageId: stage.stageId,
                             ...result

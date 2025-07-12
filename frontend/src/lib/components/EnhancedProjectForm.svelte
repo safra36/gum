@@ -496,7 +496,11 @@
                     height="400px"
                     placeholder="#!/bin/bash
 echo 'Starting deployment...'
-# Your deployment script here"
+# Your deployment script here
+
+# 📦 Variable Usage:
+# Set a variable: #DEFINE BUILD_ID=12345
+# Use in next stages: echo 'Build ID: #BUILD_ID'"
                     on:change={handleScriptChange}
                   />
                 {/key}
@@ -506,6 +510,20 @@ echo 'Starting deployment...'
                     {errors[`stage-${selectedStageIndex}`]}
                   </p>
                 {/if}
+                
+                <!-- Variable Usage Help -->
+                <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
+                  <h4 class="text-sm font-medium text-blue-900 dark:text-blue-200 mb-2">
+                    🔗 Variable Passing Between Stages
+                  </h4>
+                  <div class="text-sm text-blue-800 dark:text-blue-300 space-y-1">
+                    <p><strong>Set a variable:</strong> <code class="bg-blue-100 dark:bg-blue-800 px-1 rounded">#DEFINE BUILD_ID=12345</code></p>
+                    <p><strong>Use in next stages:</strong> <code class="bg-blue-100 dark:bg-blue-800 px-1 rounded">echo "Build ID: #BUILD_ID"</code></p>
+                    <p class="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                      Variables are automatically substituted before execution and passed to subsequent stages.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           {/if}

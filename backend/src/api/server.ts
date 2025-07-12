@@ -121,6 +121,7 @@ export class APIServer {
 
                     const results = [];
                     let failed = false;
+                    let sharedVariables = new Map<string, string>();
 
                     for (const stage of config.stages) {
                         if (failed) {
@@ -133,7 +134,18 @@ export class APIServer {
                         } else {
                             try {
                                 console.log("executing stage", stage.stageId);
-                                const result = await executorService.executeScript(stage.script, config.args);
+                                
+                                // Process variables and execute with variable support
+                                const { result, variables } = await executorService.executeScriptWithVariables(
+                                    stage.script,
+                                    config.args,
+                                    project.working_dir,
+                                    sharedVariables
+                                );
+                                
+                                // Update shared variables for next stage
+                                sharedVariables = variables;
+                                
                                 results.push({
                                     stageId: stage.stageId,
                                     ...result
@@ -395,6 +407,7 @@ export class APIServer {
 
                 const results = [];
                 let failed = false;
+                let sharedVariables = new Map<string, string>();
                 const config = project.stagingConfig;
 
                 for (const stage of config.stages) {
@@ -408,13 +421,18 @@ export class APIServer {
                     } else {
                         try {
                             console.log("executing stage", stage.stageId);
-                            const executionContext = {
-                                userId: user.id,
-                                projectId: project.id,
-                                stageId: stage.id,
-                                workingDirectory: project.working_dir
-                            };
-                            const result = await this.executorService.executeScriptWithHistory(stage.script, config.args, executionContext);
+                            
+                            // Process variables and execute with variable support
+                            const { result, variables } = await this.executorService.executeScriptWithVariables(
+                                stage.script,
+                                config.args,
+                                project.working_dir,
+                                sharedVariables
+                            );
+                            
+                            // Update shared variables for next stage
+                            sharedVariables = variables;
+                            
                             results.push({
                                 stageId: stage.stageId,
                                 ...result
@@ -476,26 +494,39 @@ export class APIServer {
 
                 // Start execution asynchronously using project's staging configuration
                 setTimeout(async () => {
+                    console.log('*** STREAMING EXECUTION STARTED ***');
                     try {
                         const executorService = ExecutorService.getInstance();
                         const stagingConfig = project.stagingConfig;
                         
-                        // Generate the full script from the project's stages
-                        const scriptParts = [`#!/bin/bash`, `# Combined script for project: ${project.title}`, ``];
+                        // Process stages with variable support
+                        console.log('=== Processing stages with variables ===');
+                        let sharedVariables = new Map<string, string>();
                         
-                        stagingConfig.stages.forEach((stage, index) => {
-                            scriptParts.push(`echo "=== Executing Stage ${index + 1}: ${stage.stageId} ==="`);
-                            scriptParts.push(stage.script);
-                            scriptParts.push(`if [ $? -ne 0 ]; then`);
-                            scriptParts.push(`  echo "Stage ${stage.stageId} failed with exit code $?"`);
-                            scriptParts.push(`  exit 1`);
-                            scriptParts.push(`fi`);
-                            scriptParts.push(`echo "Stage ${stage.stageId} completed successfully"`);
-                            scriptParts.push(``);
-                        });
+                        // Process each stage to build the combined script with variable substitutions
+                        const processedStages: string[] = [];
                         
-                        scriptParts.push(`echo "All stages completed successfully"`);
-                        const fullScript = scriptParts.join('\n');
+                        for (let i = 0; i < stagingConfig.stages.length; i++) {
+                            const stage = stagingConfig.stages[i];
+                            console.log(`Processing stage ${i + 1}: ${stage.stageId}`);
+                            
+                            // Process variables for this stage
+                            const { processedScript, variables } = executorService.processVariableDefinitions(stage.script, sharedVariables);
+                            sharedVariables = variables;
+                            
+                            console.log(`Processed script for ${stage.stageId}:`, processedScript);
+                            
+                            processedStages.push(`echo "=== Executing Stage ${i + 1}: ${stage.stageId} ==="`);
+                            processedStages.push(processedScript);
+                            processedStages.push(`if [ $? -ne 0 ]; then`);
+                            processedStages.push(`  echo "Stage ${stage.stageId} failed with exit code $?"`);
+                            processedStages.push(`  exit 1`);
+                            processedStages.push(`fi`);
+                            processedStages.push(`echo "Stage ${stage.stageId} completed successfully"`);
+                            processedStages.push(``);
+                        }
+                        
+                        const fullScript = [`#!/bin/bash`, `# Combined script for project: ${project.title}`, ``, ...processedStages, `echo "All stages completed successfully"`].join('\n');
                         
                         const executionContext = {
                             userId: user.id,

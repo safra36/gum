@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   
   export let value: string = '';
-  export let placeholder: string = '#!/bin/bash\necho "Hello World"';
+  export let placeholder: string = '#!/bin/bash\necho "Hello World"\n\n# Variables: Set with #DEFINE VarName=value\n# Access with #VarName in next stages';
   export let height: string = '400px';
   export let readOnly: boolean = false;
 

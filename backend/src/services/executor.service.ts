@@ -1,5 +1,6 @@
 import { exec, ExecOptions, spawn } from "child_process";
 import * as os from "os";
+import * as fs from "fs";
 import { GitLogEntry } from "../types/executor.service";
 import { ExecutionHistoryService } from "./execution-history.service";
 import { ExecutionStatus } from "../entity/ExecutionHistory";
@@ -140,7 +141,7 @@ export class ExecutorService {
                     stageId: context.stageId
                 });
 
-                const result = await this.executeScriptWithStreaming(script, args, executionId, context.workingDirectory);
+                const result = await this.executeScriptWithStreaming(script, args, executionId, context.workingDirectory, context);
                 const duration = Date.now() - startTime;
 
                 // Update execution history with result
@@ -174,7 +175,8 @@ export class ExecutorService {
         script: string, 
         args: string[], 
         executionId: string,
-        workingDirectory?: string
+        workingDirectory?: string,
+        context?: ExecutionContext
     ): Promise<ExecutionResult> {
         return new Promise<ExecutionResult>((resolve, reject) => {
             let stdout = "";
@@ -187,42 +189,61 @@ export class ExecutorService {
                 const platform = os.platform();
                 let command: string;
                 let commandArgs: string[];
+                let spawnOptions: any;
                 
                 if (platform === 'win32') {
                     command = 'cmd.exe';
                     commandArgs = ['/c', substitutedScript];
+                    spawnOptions = {
+                        stdio: ['pipe', 'pipe', 'pipe'],
+                        shell: false
+                    };
                 } else {
-                    command = '/bin/bash';
+                    // Use absolute path to sh
+                    command = '/bin/sh';
                     commandArgs = ['-c', substitutedScript];
+                    spawnOptions = {
+                        stdio: ['pipe', 'pipe', 'pipe'],
+                        shell: false
+                    };
                 }
-
-                const spawnOptions: any = {
-                    stdio: ['pipe', 'pipe', 'pipe'],
-                    shell: false
-                };
                 
                 // Set working directory if provided
                 if (workingDirectory) {
                     spawnOptions.cwd = workingDirectory;
                 }
 
-                const process = spawn(command, commandArgs, spawnOptions);
+                const childProcess = spawn(command, commandArgs, spawnOptions);
+
+                // Handle spawn errors
+                childProcess.on('error', (error) => {
+                    console.error(`Failed to start process: ${error.message}`);
+                    if (error.message.includes('ENOENT')) {
+                        const errorMsg = `Failed to execute command: ${command}. Please ensure bash is installed at /usr/bin/bash.`;
+                        this.executionEmitter.emit(`execution:${executionId}:error`, errorMsg);
+                        reject(new Error(errorMsg));
+                    } else {
+                        this.executionEmitter.emit(`execution:${executionId}:error`, error.message);
+                        reject(error);
+                    }
+                    return;
+                });
 
                 // Stream stdout in real-time
-                process.stdout.on('data', (data) => {
+                childProcess.stdout.on('data', (data) => {
                     const output = data.toString();
                     stdout += output;
                     this.executionEmitter.emit(`execution:${executionId}:stdout`, output);
                 });
 
                 // Stream stderr in real-time
-                process.stderr.on('data', (data) => {
+                childProcess.stderr.on('data', (data) => {
                     const output = data.toString();
                     stderr += output;
                     this.executionEmitter.emit(`execution:${executionId}:stderr`, output);
                 });
 
-                process.on("close", (code) => {
+                childProcess.on("close", (code) => {
                     console.log("SSE - Process closed with code:", code);
                     console.log({
                         stdout,
@@ -231,6 +252,7 @@ export class ExecutorService {
                     });
                     
                     console.log(`SSE - Emitting close event for execution: ${executionId}`);
+                    
                     this.executionEmitter.emit(`execution:${executionId}:close`, {
                         exitCode: code,
                         stdout,
@@ -244,12 +266,88 @@ export class ExecutorService {
                     });
                 });
 
-                process.on("error", (error) => {
-                    this.executionEmitter.emit(`execution:${executionId}:error`, error.message);
+                // Error handler already added above
+            } catch (error) {
+                this.executionEmitter.emit(`execution:${executionId}:error`, error instanceof Error ? error.message : String(error));
+                reject(error);
+            }
+        });
+    }
+
+    public executeScriptWithVariables(script: string, args: string[], workingDirectory?: string, variables?: Map<string, string>): Promise<{ result: ExecutionResult, variables: Map<string, string> }> {
+        console.log('=== executeScriptWithVariables called ===');
+        console.log('Script:', script);
+        return new Promise<{ result: ExecutionResult, variables: Map<string, string> }>((resolve, reject) => {
+            let stdout = "";
+            let stderr = "";
+
+            try {
+                // Process variable definitions and substitutions
+                const { processedScript, variables: updatedVariables, captureCommands } = this.processVariableDefinitions(script, variables);
+                const substitutedScript = this.substituteArgs(processedScript, args);
+                
+                // If we have capture commands, add variable output at the end
+                let finalScript = substitutedScript;
+                if (captureCommands.length > 0) {
+                    const lines = finalScript.split('\n');
+                    
+                    // Add variable output at the end for next stage
+                    lines.push('');
+                    lines.push('# Variable capture for next stage');
+                    captureCommands.forEach(cmd => {
+                        lines.push(`echo "VAROUT:${cmd.varName}:${cmd.expression}"`);
+                    });
+                    
+                    finalScript = lines.join('\n');
+                }
+                
+                const { command, options } = this.buildCommandAndOptions(finalScript, workingDirectory);
+
+                const childProcess = exec(command, options, (error, stdoutData, stderrData) => {
+                    stdout += stdoutData;
+                    stderr += stderrData;
+                });
+
+                childProcess.on("close", (code) => {
+                    console.log({
+                        stdout,
+                        stderr,
+                        exitCode: code
+                    });
+                    
+                    // Extract captured variables from stdout
+                    const finalVariables = new Map(updatedVariables);
+                    const lines = stdout.split('\n');
+                    let cleanStdout = '';
+                    
+                    for (const line of lines) {
+                        const varMatch = line.match(/^VAROUT:([^:]+):(.*)$/);
+                        if (varMatch) {
+                            const [, varName, varValue] = varMatch;
+                            finalVariables.set(varName, varValue);
+                            console.log(`Captured variable: ${varName} = ${varValue}`);
+                        } else {
+                            cleanStdout += line + '\n';
+                        }
+                    }
+                    
+                    // Remove trailing newline if it was added
+                    cleanStdout = cleanStdout.replace(/\n$/, '');
+                    
+                    resolve({
+                        result: {
+                            stdout: cleanStdout,
+                            stderr,
+                            exitCode: code
+                        },
+                        variables: finalVariables
+                    });
+                });
+
+                childProcess.on("error", (error) => {
                     reject(error);
                 });
             } catch (error) {
-                this.executionEmitter.emit(`execution:${executionId}:error`, error instanceof Error ? error.message : String(error));
                 reject(error);
             }
         });
@@ -265,12 +363,12 @@ export class ExecutorService {
                 const { command, options } = this.buildCommandAndOptions(substitutedScript, workingDirectory);
                 
 
-                const process = exec(command, options, (error, stdoutData, stderrData) => {
+                const childProcess = exec(command, options, (error, stdoutData, stderrData) => {
                     stdout += stdoutData;
                     stderr += stderrData;
                 });
 
-                process.on("close", (code) => {
+                childProcess.on("close", (code) => {
                     console.log({
                         stdout,
                         stderr,
@@ -284,7 +382,7 @@ export class ExecutorService {
                     });
                 });
 
-                process.on("error", (error) => {
+                childProcess.on("error", (error) => {
                     reject(error);
                 });
             } catch (error) {
@@ -293,14 +391,109 @@ export class ExecutorService {
         });
     }
 
+
     private substituteArgs(script: string, args: string[]): string {
-        return script.replace(/\$(\d+)/g, (match, index) => {
+        // First substitute numbered arguments
+        let result = script.replace(/\$(\d+)/g, (match, index) => {
             const argIndex = parseInt(index, 10) - 1;
             if (argIndex < 0 || argIndex >= args.length) {
                 throw new Error(`Argument $${index} is not defined`);
             }
             return args[argIndex];
         });
+        
+        return result;
+    }
+
+    public processVariableDefinitions(script: string, existingVariables: Map<string, string> = new Map()): { processedScript: string, variables: Map<string, string>, captureCommands: Array<{varName: string, expression: string}> } {
+        const variables = new Map(existingVariables);
+        const lines = script.split('\n');
+        const processedLines: string[] = [];
+        const captureCommands: Array<{varName: string, expression: string}> = [];
+        
+        console.log('Processing script:', script);
+        console.log('Existing variables:', Object.fromEntries(existingVariables));
+        
+        for (const line of lines) {
+            // Check for #DEFINE VarName=Value (case insensitive)
+            const defineMatch = line.match(/^#DEFINE\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/i);
+            if (defineMatch) {
+                const [, varName, varValue] = defineMatch;
+                const trimmedValue = varValue.trim();
+                // Remove quotes if present
+                const cleanValue = trimmedValue.replace(/^["'](.*)["']$/, '$1');
+                
+                // Check if this is a dynamic expression (contains $ or backticks or $())
+                if (cleanValue.includes('$') || cleanValue.includes('`') || cleanValue.match(/\$\(/)) {
+                    // This is a dynamic expression - replace with shell variable assignment
+                    processedLines.push(`${varName}=${cleanValue}`);
+                    // Store shell variable reference for substitution
+                    variables.set(varName, `$${varName}`);
+                    // Add to capture commands for next stage
+                    captureCommands.push({
+                        varName,
+                        expression: `$${varName}`
+                    });
+                    console.log(`Defined dynamic variable: ${varName} = ${cleanValue}`);
+                } else {
+                    // This is a static value - store it directly
+                    variables.set(varName, cleanValue);
+                    console.log(`Defined static variable: ${varName} = ${cleanValue}`);
+                }
+                
+                // Continue to next line (we either added shell assignment or skipped)
+                continue;
+            }
+            
+            // Substitute variables in order of definition (preserve insertion order)
+            let processedLine = line;
+            
+            // Sort variables by name length (longest first) to avoid partial replacements
+            const sortedVariables = Array.from(variables.entries()).sort((a, b) => b[0].length - a[0].length);
+            
+            for (const [varName, varValue] of sortedVariables) {
+                // Use multiple patterns for variable substitution:
+                // 1. #VarName followed by word boundary
+                // 2. #{VarName} for explicit variable boundaries
+                const patterns = [
+                    new RegExp(`#\\{${varName}\\}`, 'g'),  // #{VarName}
+                    new RegExp(`#${varName}(?![A-Za-z0-9_])`, 'g')  // #VarName not followed by word char
+                ];
+                
+                for (const regex of patterns) {
+                    const before = processedLine;
+                    processedLine = processedLine.replace(regex, varValue);
+                    if (before !== processedLine) {
+                        console.log(`Substituted: ${before} -> ${processedLine}`);
+                    }
+                }
+            }
+            
+            processedLines.push(processedLine);
+        }
+        
+        console.log('Final variables:', Object.fromEntries(variables));
+        console.log('Capture commands:', captureCommands);
+        console.log('Processed script:', processedLines.join('\n'));
+        
+        return {
+            processedScript: processedLines.join('\n'),
+            variables,
+            captureCommands
+        };
+    }
+
+
+    private findBash(): string {
+        const platform = os.platform();
+        
+        if (platform === 'win32') {
+            return 'cmd.exe';
+        }
+        
+        // For Unix systems, use default shell (bash/sh)
+        console.log('Using system default shell');
+        return 'bash';
     }
 
     async getGitBranches(repoPath: string): Promise<string[]> {
@@ -408,26 +601,9 @@ export class ExecutorService {
             options.cwd = workingDirectory;
         }
 
-        // Escape single quotes and dollar signs in the script
-        const escapedScript = script.replace(/'/g, "'\\''").replace(/\$/g, '\\$');
-
-        switch (platform) {
-            case 'win32':
-                // For Windows, we'll use a temporary file approach
-                const tempFile = `%TEMP%\\script_${Date.now()}.bat`;
-                command = `(echo ${escapedScript.replace(/\n/g, ' & echo ')}) > ${tempFile} && ${tempFile}`;
-                options.shell = 'cmd.exe';
-                break;
-            case 'darwin':
-            case 'linux':
-                // For Unix-like systems, we can use heredoc
-                command = `/bin/bash -c 'cat << EOF | /bin/bash\n${escapedScript}\nEOF'`;
-                options.shell = '/bin/bash';
-                break;
-            default:
-                throw new Error(`Unsupported platform: ${platform}`);
-        }
-
+        // Just use the script directly and let exec handle the shell
+        command = script;
+        
         return { command, options };
     }
 }

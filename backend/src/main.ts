@@ -43,6 +43,7 @@ async function getDynamicRoutes(): Promise<RouteConfig[]> {
 
                 const results = [];
                 let failed = false;
+                let sharedVariables = new Map<string, string>();
 
                 console.log(config.stages);
                 
@@ -59,7 +60,18 @@ async function getDynamicRoutes(): Promise<RouteConfig[]> {
                             console.log("executing stage", stage.stageId, config.stages.indexOf(stage));
                             // Note: Dynamic routes don't have user context, so we can't save execution history
                             // These routes are deprecated in favor of the new /execute-project endpoint
-                            const result = await executorService.executeScript(stage.script, config.args, project.working_dir);
+                            
+                            // Use the new variable processing system
+                            const { result, variables } = await executorService.executeScriptWithVariables(
+                                stage.script, 
+                                config.args, 
+                                project.working_dir, 
+                                sharedVariables
+                            );
+                            
+                            // Update shared variables for next stage
+                            sharedVariables = variables;
+                            
                             results.push({
                                 stageId: stage.stageId,
                                 ...result
