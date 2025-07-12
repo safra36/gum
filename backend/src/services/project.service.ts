@@ -132,17 +132,21 @@ export class ProjectService {
 
             // Update stages
             if (updateData.stagingConfig.stages) {
-                project.stagingConfig.stages = updateData.stagingConfig.stages.map(stageData => {
+                project.stagingConfig.stages = updateData.stagingConfig.stages.map((stageData, index) => {
                     const existingStage = project.stagingConfig.stages.find(s => s.id === stageData.id);
                     if (existingStage) {
                         if (stageData.script !== undefined) existingStage.script = stageData.script;
                         if (stageData.stageId !== undefined) existingStage.stageId = stageData.stageId;
+                        // Update created_at to preserve order
+                        existingStage.created_at = Date.now() + index;
                         return existingStage;
                     } else {
                         const newStage = new Stage();
                         newStage.script = stageData.script;
                         newStage.stageId = stageData.stageId;
                         newStage.stagingConfig = project.stagingConfig;
+                        // Set created_at to preserve order
+                        newStage.created_at = Date.now() + index;
                         return newStage;
                     }
                 });
@@ -177,6 +181,14 @@ export class ProjectService {
     public async getProjectById(id: number): Promise<Project> {
         const project = await AppDataSource.manager.findOne(Project, {
             where: { id },
+            order: {
+                stagingConfig: {
+                    stages: {
+                        created_at: "ASC",
+                        id: "ASC"
+                    }
+                }
+            },
             relations: ['stagingConfig', 'stagingConfig.stages']
         });
         
