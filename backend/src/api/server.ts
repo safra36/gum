@@ -1258,7 +1258,7 @@ export class APIServer {
 
                 const logConfigService = require('../services/log-config.service').LogConfigService.getInstance();
                 const logPermissionService = require('../services/log-permission.service').LogPermissionService.getInstance();
-                const { LogPermissionType } = require('../entity/LogPermission');
+                const { PermissionType } = require('../entity/Permission');
 
                 console.log(`[LogStream] User ${user.id} (${user.username}) requesting logs for project ${projectId}, log ${logId}`);
 
@@ -1277,7 +1277,7 @@ export class APIServer {
                     user.id,
                     parseInt(projectId),
                     parseInt(logId),
-                    LogPermissionType.VIEW_LOGS
+                    PermissionType.VIEW_LOGS
                 );
 
                 console.log(`[LogStream] Permission check for user ${user.id}: ${hasPermission}`);
@@ -1370,11 +1370,52 @@ export class APIServer {
                 const projectId = parseInt(req.params.projectId);
                 const logPermissionService = require('../services/log-permission.service').LogPermissionService.getInstance();
 
-                // Get all permissions for this project
-                const permissions = await require('../data-source').AppDataSource.getRepository(require('../entity/LogPermission').LogPermission).find({
+                // Get all permissions for this project from unified Permission table
+                const Permission = require('../entity/Permission').Permission;
+                const { PermissionType } = require('../entity/Permission');
+                const permissionRecords = await require('../data-source').AppDataSource.getRepository(Permission).find({
                     where: { projectId },
                     relations: ['user', 'logConfig']
                 });
+
+                // Group permissions by userId + logConfigId to match frontend format
+                const permissionMap = new Map<string, any>();
+                const logPermissionTypes = [
+                    PermissionType.VIEW_LOGS,
+                    PermissionType.CONFIGURE_LOGS,
+                    PermissionType.DELETE_LOGS,
+                    PermissionType.MANAGE_LOG_PERMISSIONS
+                ];
+
+                for (const record of permissionRecords) {
+                    if (!logPermissionTypes.includes(record.type)) {
+                        continue; // Skip non-log permissions
+                    }
+
+                    const key = `${record.userId}:${record.logConfigId || 'null'}`;
+                    if (!permissionMap.has(key)) {
+                        permissionMap.set(key, {
+                            id: 0,
+                            userId: record.userId,
+                            projectId: record.projectId,
+                            logConfigId: record.logConfigId,
+                            permissions: [],
+                            user: record.user,
+                            logConfig: record.logConfig,
+                            createdAt: record.createdAt,
+                            updatedAt: record.updatedAt
+                        });
+                    }
+
+                    if (record.granted) {
+                        const groupedPerm = permissionMap.get(key)!;
+                        if (!groupedPerm.permissions.includes(record.type)) {
+                            groupedPerm.permissions.push(record.type);
+                        }
+                    }
+                }
+
+                let permissions = Array.from(permissionMap.values());
 
                 // If user is admin, ensure they have a project-level permission record with all permissions
                 if (currentUser?.role === 'admin') {

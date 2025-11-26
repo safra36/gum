@@ -4,11 +4,9 @@ import {
     Column,
     ManyToOne,
     CreateDateColumn,
-    UpdateDateColumn,
-    OneToMany
+    UpdateDateColumn
 } from "typeorm"
 import { Project } from "./Project"
-import { LogPermission } from "./LogPermission"
 
 @Entity()
 export class LogConfig {
@@ -35,9 +33,6 @@ export class LogConfig {
 
     @Column()
     projectId: number
-
-    @OneToMany(() => LogPermission, logPermission => logPermission.logConfig)
-    logPermissions: LogPermission[]
 
     @CreateDateColumn()
     createdAt: Date

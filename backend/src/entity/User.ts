@@ -1,7 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from "typeorm"
 import { ExecutionHistory } from "./ExecutionHistory"
 import { ProjectPermission } from "./ProjectPermission"
-import { LogPermission } from "./LogPermission"
 
 export enum UserRole {
     ADMIN = "admin",
@@ -47,7 +46,4 @@ export class User {
 
     @OneToMany(() => ProjectPermission, projectPermission => projectPermission.user)
     projectPermissions: ProjectPermission[]
-
-    @OneToMany(() => LogPermission, logPermission => logPermission.user)
-    logPermissions: LogPermission[]
 }
