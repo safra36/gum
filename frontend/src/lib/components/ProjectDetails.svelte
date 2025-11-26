@@ -667,6 +667,17 @@
                   </button>
                 {/if}
 
+                {#if $permissions.canExecute}
+                  <button
+                      class="bg-teal-500 text-white px-4 py-2 rounded-md hover:bg-teal-600 transition-colors duration-200 flex items-center justify-center"
+                      on:click={() => showLogPermissionManager = true}
+                      title="Manage log configurations and permissions"
+                  >
+                      <Lock class="mr-2" size={18} />
+                      Log Management
+                  </button>
+                {/if}
+
                 <!-- Additional tools can be added here in the future -->
             </div>
         {:else}
@@ -802,17 +813,6 @@
                     showLogForm = true;
                 }}
             />
-            <div class="mt-4 flex justify-end">
-                {#if userCanManageLogPermissions}
-                    <button
-                        on:click={() => showLogPermissionManager = true}
-                        class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
-                    >
-                        <Lock size={16} />
-                        Manage Permissions
-                    </button>
-                {/if}
-            </div>
         </div>
     {/if}
 

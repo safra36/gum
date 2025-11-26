@@ -1092,12 +1092,31 @@ export class APIServer {
             }
         });
 
-        // Create a new log config
+        // Create a new log config - REQUIRES configure_logs permission
         this.app.post('/project/:projectId/logs', this.authenticateRequest, this.checkAccess(AuthLevels.EditProject), this.checkProjectAccess(ProjectAccessLevel.VIEW), async (req: Request, res: Response) => {
             try {
+                const currentUser = req["user"] as any;
                 const projectId = parseInt(req.params.projectId);
                 const { name, command, description, enabled, workingDir } = req.body;
+
+                if (!currentUser) {
+                    return res.status(401).json({ error: "Unauthorized" });
+                }
+
                 const logConfigService = require('../services/log-config.service').LogConfigService.getInstance();
+                const logPermissionService = require('../services/log-permission.service').LogPermissionService.getInstance();
+
+                // Check if user has configure_logs permission at project level
+                const hasPermission = await logPermissionService.hasLogPermission(
+                    currentUser.id,
+                    projectId,
+                    null, // null for project-level permission
+                    "configure_logs"
+                );
+
+                if (!hasPermission) {
+                    return res.status(403).json({ error: "You don't have permission to create log configurations in this project" });
+                }
 
                 const logConfig = await logConfigService.createLogConfig(projectId, {
                     name,
@@ -1107,6 +1126,7 @@ export class APIServer {
                     workingDir
                 });
 
+                console.log(`[Audit] User ${currentUser.id} (${currentUser.username}) created log config ${logConfig.id} in project ${projectId}`);
                 res.status(201).json({ logConfig });
             } catch (error) {
                 console.error('Error creating log config:', error);
@@ -1117,14 +1137,44 @@ export class APIServer {
             }
         });
 
-        // Update a log config
+        // Update a log config - REQUIRES configure_logs permission
         this.app.put('/project/:projectId/logs/:logId', this.authenticateRequest, this.checkAccess(AuthLevels.EditProject), this.checkProjectAccess(ProjectAccessLevel.VIEW), async (req: Request, res: Response) => {
             try {
+                const currentUser = req["user"] as any;
+                const projectId = parseInt(req.params.projectId);
                 const logId = parseInt(req.params.logId);
                 const { name, command, description, enabled, workingDir } = req.body;
-                const logConfigService = require('../services/log-config.service').LogConfigService.getInstance();
 
-                const logConfig = await logConfigService.updateLogConfig(logId, {
+                if (!currentUser) {
+                    return res.status(401).json({ error: "Unauthorized" });
+                }
+
+                const logConfigService = require('../services/log-config.service').LogConfigService.getInstance();
+                const logPermissionService = require('../services/log-permission.service').LogPermissionService.getInstance();
+
+                // Get the log config to verify it exists and belongs to this project
+                const logConfig = await logConfigService.getLogConfigById(logId);
+                if (!logConfig) {
+                    return res.status(404).json({ error: "Log configuration not found" });
+                }
+
+                if (logConfig.projectId !== projectId) {
+                    return res.status(403).json({ error: "Log configuration does not belong to this project" });
+                }
+
+                // Check if user has configure_logs permission for this log
+                const hasPermission = await logPermissionService.hasLogPermission(
+                    currentUser.id,
+                    projectId,
+                    logId,
+                    "configure_logs"
+                );
+
+                if (!hasPermission) {
+                    return res.status(403).json({ error: "You don't have permission to update this log configuration" });
+                }
+
+                const updatedConfig = await logConfigService.updateLogConfig(logId, {
                     name,
                     command,
                     description,
@@ -1132,7 +1182,8 @@ export class APIServer {
                     workingDir
                 });
 
-                res.status(200).json({ logConfig });
+                console.log(`[Audit] User ${currentUser.id} (${currentUser.username}) updated log config ${logId} in project ${projectId}`);
+                res.status(200).json({ logConfig: updatedConfig });
             } catch (error) {
                 console.error('Error updating log config:', error);
                 res.status(500).json({
@@ -1142,13 +1193,44 @@ export class APIServer {
             }
         });
 
-        // Delete a log config
+        // Delete a log config - REQUIRES configure_logs permission
         this.app.delete('/project/:projectId/logs/:logId', this.authenticateRequest, this.checkAccess(AuthLevels.EditProject), this.checkProjectAccess(ProjectAccessLevel.VIEW), async (req: Request, res: Response) => {
             try {
+                const currentUser = req["user"] as any;
+                const projectId = parseInt(req.params.projectId);
                 const logId = parseInt(req.params.logId);
+
+                if (!currentUser) {
+                    return res.status(401).json({ error: "Unauthorized" });
+                }
+
                 const logConfigService = require('../services/log-config.service').LogConfigService.getInstance();
+                const logPermissionService = require('../services/log-permission.service').LogPermissionService.getInstance();
+
+                // Get the log config to verify it exists and belongs to this project
+                const logConfig = await logConfigService.getLogConfigById(logId);
+                if (!logConfig) {
+                    return res.status(404).json({ error: "Log configuration not found" });
+                }
+
+                if (logConfig.projectId !== projectId) {
+                    return res.status(403).json({ error: "Log configuration does not belong to this project" });
+                }
+
+                // Check if user has configure_logs permission for this log
+                const hasPermission = await logPermissionService.hasLogPermission(
+                    currentUser.id,
+                    projectId,
+                    logId,
+                    "configure_logs"
+                );
+
+                if (!hasPermission) {
+                    return res.status(403).json({ error: "You don't have permission to delete this log configuration" });
+                }
 
                 await logConfigService.deleteLogConfig(logId);
+                console.log(`[Audit] User ${currentUser.id} (${currentUser.username}) deleted log config ${logId} from project ${projectId}`);
                 res.status(200).json({ message: "Log configuration deleted successfully" });
             } catch (error) {
                 console.error('Error deleting log config:', error);
