@@ -1178,8 +1178,17 @@ export class APIServer {
                 const logPermissionService = require('../services/log-permission.service').LogPermissionService.getInstance();
                 const { LogPermissionType } = require('../entity/LogPermission');
 
+                console.log(`[LogStream] User ${user.id} (${user.username}) requesting logs for project ${projectId}, log ${logId}`);
+
                 // Validate log config exists and belongs to project
-                const logConfig = await logConfigService.validateLogConfig(parseInt(projectId), parseInt(logId));
+                let logConfig;
+                try {
+                    logConfig = await logConfigService.validateLogConfig(parseInt(projectId), parseInt(logId));
+                    console.log(`[LogStream] Log config validated: ${logConfig.name}`);
+                } catch (error) {
+                    console.error(`[LogStream] Log config validation failed:`, error);
+                    return res.status(404).json({ error: "Log configuration not found" });
+                }
 
                 // Check if user has permission to view logs
                 const hasPermission = await logPermissionService.hasLogPermission(
@@ -1189,7 +1198,10 @@ export class APIServer {
                     LogPermissionType.VIEW_LOGS
                 );
 
+                console.log(`[LogStream] Permission check for user ${user.id}: ${hasPermission}`);
+
                 if (!hasPermission) {
+                    console.warn(`[LogStream] User ${user.id} denied access to logs for project ${projectId}`);
                     return res.status(403).json({ error: "Permission denied to view these logs" });
                 }
 

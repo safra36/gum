@@ -131,23 +131,31 @@ export class LogPermissionService {
             where: { id: userId }
         });
 
+        console.log(`[Permission Check] User ${userId} role: ${user?.role}`);
+
         // Admins have all permissions
         if (user?.role === "admin") {
+            console.log(`[Permission Check] User is admin, granting all permissions`);
             return true;
         }
 
         // Check log-specific permission
         let permission = await this.getUserLogPermissions(userId, projectId, logConfigId);
+        console.log(`[Permission Check] Log-specific permission for user ${userId}, log ${logConfigId}:`, permission?.permissions || 'none');
         if (permission && permission.permissions.includes(requiredPermission)) {
+            console.log(`[Permission Check] Log-specific permission granted: ${requiredPermission}`);
             return true;
         }
 
         // Check project-level default permission
         const defaultPermission = await this.getProjectDefaultPermissions(userId, projectId);
+        console.log(`[Permission Check] Project default permission for user ${userId}, project ${projectId}:`, defaultPermission?.permissions || 'none');
         if (defaultPermission && defaultPermission.permissions.includes(requiredPermission)) {
+            console.log(`[Permission Check] Project default permission granted: ${requiredPermission}`);
             return true;
         }
 
+        console.log(`[Permission Check] No permission found for user ${userId} requiring ${requiredPermission}`);
         return false;
     }
 

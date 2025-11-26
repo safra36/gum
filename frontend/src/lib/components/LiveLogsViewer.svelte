@@ -15,11 +15,13 @@
     let isPaused = false;
     let isConnected = false;
     let isLoading = true;
+    let errorMessage: string | null = null;
     let scrollContainer: HTMLDivElement;
 
     function connectToLogs() {
         isLoading = true;
         isConnected = false;
+        errorMessage = null;
         logs = [];
 
         try {
@@ -32,6 +34,7 @@
                     if (data.type === "connected") {
                         isConnected = true;
                         isLoading = false;
+                        errorMessage = null;
                         addToast("Connected to log stream", "success");
                     } else if (data.type === "stdout") {
                         if (!isPaused) {
@@ -51,6 +54,8 @@
                         }
                     } else if (data.type === "error") {
                         isConnected = false;
+                        isLoading = false;
+                        errorMessage = data.error;
                         addToast(`Error: ${data.error}`, "error");
                         if (eventSource) {
                             eventSource.close();
@@ -63,13 +68,16 @@
 
             eventSource.onerror = () => {
                 isConnected = false;
+                isLoading = false;
                 if (eventSource?.readyState === EventSource.CLOSED) {
-                    addToast("Connection closed", "info");
+                    errorMessage = "Connection closed by server. You may not have permission to view these logs.";
+                    addToast(errorMessage, "error");
                 }
             };
         } catch (error) {
-            addToast(`Failed to connect to logs: ${error}`, "error");
             isLoading = false;
+            errorMessage = `Failed to connect to logs: ${error}`;
+            addToast(errorMessage, "error");
         }
     }
 
@@ -194,7 +202,14 @@
             bind:this={scrollContainer}
             class="flex-1 overflow-y-auto p-4 bg-gray-900 font-mono text-sm text-gray-100"
         >
-            {#if isLoading}
+            {#if errorMessage}
+                <div class="flex items-center justify-center h-full">
+                    <div class="text-center">
+                        <div class="text-red-400 text-lg mb-4">⚠️ Error</div>
+                        <p class="text-red-300">{errorMessage}</p>
+                    </div>
+                </div>
+            {:else if isLoading}
                 <div class="flex items-center justify-center h-full">
                     <div class="text-center">
                         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mx-auto mb-4"></div>
