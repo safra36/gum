@@ -894,6 +894,10 @@
     <LiveLogsViewer
         logConfig={selectedLogConfig}
         projectId={project.id}
+        on:close={() => {
+            showLiveLogsViewer = false;
+            selectedLogConfig = null;
+        }}
     />
 {/if}
 

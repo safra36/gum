@@ -55,6 +55,20 @@
     'set_cron'
   ];
 
+  const permissionLabels: { [key: string]: string } = {
+    'creating_project': 'Create Projects',
+    'editing_project': 'Edit Projects',
+    'delete_project': 'Delete Projects',
+    'view_project': 'View Projects',
+    'execute_script': 'Execute Scripts',
+    'view_execution_history': 'View Execution History',
+    'view_execution_logs': 'View Execution Logs',
+    'get_git_log': 'View Git Log',
+    'revert_commit': 'Revert Commits',
+    'switch_branch': 'Switch Branches',
+    'set_cron': 'Set Cron Jobs'
+  };
+
   onMount(async () => {
     await loadUsers();
     await loadProjects();
@@ -324,16 +338,17 @@
 
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">Permissions</label>
+          <p class="text-xs text-gray-500 mb-2">Note: Log-specific permissions (view, configure, manage logs) are set per-project in the "Manage Permissions" button on each project's log section.</p>
           <div class="space-y-2 max-h-40 overflow-y-auto">
             {#each availablePermissions as permission}
               <label class="flex items-center">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   checked={newUser.permissions.includes(permission)}
                   on:change={() => togglePermission(permission, newUser.permissions)}
                   class="mr-2"
                 />
-                <span class="text-sm">{permission}</span>
+                <span class="text-sm">{permissionLabels[permission] || permission}</span>
               </label>
             {/each}
           </div>
@@ -410,16 +425,17 @@
 
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-2">Permissions</label>
+          <p class="text-xs text-gray-500 mb-2">Note: Log-specific permissions (view, configure, manage logs) are set per-project in the "Manage Permissions" button on each project's log section.</p>
           <div class="space-y-2 max-h-40 overflow-y-auto">
             {#each availablePermissions as permission}
               <label class="flex items-center">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   checked={editingUser?.permissions.includes(permission) || false}
                   on:change={() => editingUser && togglePermission(permission, editingUser.permissions)}
                   class="mr-2"
                 />
-                <span class="text-sm">{permission}</span>
+                <span class="text-sm">{permissionLabels[permission] || permission}</span>
               </label>
             {/each}
           </div>

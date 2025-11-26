@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy } from "svelte";
+    import { onDestroy, createEventDispatcher } from "svelte";
     import { X, Pause, Play, Download, Copy } from "lucide-svelte";
     import { addToast } from "$lib/stores/toast";
     import type { LogConfig } from "$lib/types";
@@ -7,6 +7,8 @@
 
     export let logConfig: LogConfig;
     export let projectId: number;
+
+    const dispatch = createEventDispatcher();
 
     let eventSource: EventSource | null = null;
     let logs: Array<{ type: "stdout" | "stderr"; data: string; timestamp: number }> = [];
@@ -102,9 +104,22 @@
         addToast("Logs downloaded", "success");
     }
 
-    onDestroy(() => {
+    function closeViewer() {
+        // Close the EventSource connection
         if (eventSource) {
             eventSource.close();
+            eventSource = null;
+        }
+        // Dispatch close event to parent component
+        dispatch("close");
+    }
+
+    onDestroy(() => {
+        // Ensure cleanup on component destruction
+        if (eventSource) {
+            console.log("Closing EventSource connection on component destroy");
+            eventSource.close();
+            eventSource = null;
         }
     });
 
@@ -122,9 +137,13 @@
                 <h2 class="text-2xl font-bold text-gray-900 dark:text-white">{logConfig.name}</h2>
                 <p class="text-gray-600 dark:text-gray-400 text-sm mt-1 font-mono">{logConfig.command}</p>
             </div>
-            <a href="#close" class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+            <button
+                on:click={closeViewer}
+                class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                title="Close"
+            >
                 <X size={24} />
-            </a>
+            </button>
         </div>
 
         <!-- Status Bar -->
