@@ -11,7 +11,7 @@
     import LogConfigForm from "./LogConfigForm.svelte";
     import LiveLogsViewer from "./LiveLogsViewer.svelte";
     import LogPermissionManager from "./LogPermissionManager.svelte";
-    import { executeStaging, executeProject, fetchGitLog, fetchGitBranches, switchGitBranch, revertToCommit, switchToHead, setCronJob, getCronJob, removeCronJob, fetchLogConfigs, createLogConfig, updateLogConfig, deleteLogConfig } from "../services/api";
+    import { executeStaging, executeProject, fetchGitLog, fetchGitBranches, switchGitBranch, revertToCommit, switchToHead, setCronJob, getCronJob, removeCronJob, fetchLogConfigs, createLogConfig, updateLogConfig, deleteLogConfig, getLogPermissions } from "../services/api";
     import type { Project, ExecutionResult, GitLogEntry, LogConfig } from "$lib/types";
     import { permissions } from '$lib/stores/user';
     import { toast as addToast } from "$lib/stores/toast";
@@ -54,6 +54,8 @@
     let showLiveLogsViewer = false;
     let showLogPermissionManager = false;
     let isLoadingLogs = false;
+    let userLogPermissions: string[] = [];
+    let userCanManageLogPermissions = false;
 
     $: isValidCron = validateCronExpression(cronExpression);
 
@@ -360,8 +362,23 @@
         if (!project) return;
         isLoadingLogs = true;
         try {
-            const result = await fetchLogConfigs(project.id);
-            logConfigs = result.logConfigs || [];
+            const [configsResult, permissionsResult] = await Promise.all([
+                fetchLogConfigs(project.id),
+                getLogPermissions(project.id)
+            ]);
+            logConfigs = configsResult.logConfigs || [];
+
+            // Extract user's permissions from the results
+            const userPermissions = permissionsResult.permissions || [];
+            userLogPermissions = [];
+            userCanManageLogPermissions = false;
+
+            // Find permissions for current user that apply to all logs (no logConfigId = null)
+            const defaultPerms = userPermissions.find((p: any) => p.logConfigId === null);
+            if (defaultPerms && defaultPerms.permissions) {
+                userLogPermissions = defaultPerms.permissions;
+                userCanManageLogPermissions = defaultPerms.permissions.includes("manage_log_permissions");
+            }
         } catch (error) {
             addToast(`Failed to load log configs: ${error}`, "error");
         } finally {
@@ -764,11 +781,13 @@
     {/if}
 
     <!-- LOGS SECTION -->
-    {#if project}
+    {#if project && logConfigs.length > 0}
         <div class="my-6" in:fly={{ y: 20, duration: 300 }}>
             <LogConfigList
                 logConfigs={logConfigs}
                 isLoading={isLoadingLogs}
+                userLogPermissions={userLogPermissions}
+                canManagePermissions={userCanManageLogPermissions}
                 on:viewLogs={(e) => {
                     selectedLogConfig = e.detail;
                     showLiveLogsViewer = true;
@@ -784,13 +803,15 @@
                 }}
             />
             <div class="mt-4 flex justify-end">
-                <button
-                    on:click={() => showLogPermissionManager = true}
-                    class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
-                >
-                    <Lock size={16} />
-                    Manage Permissions
-                </button>
+                {#if userCanManageLogPermissions}
+                    <button
+                        on:click={() => showLogPermissionManager = true}
+                        class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
+                    >
+                        <Lock size={16} />
+                        Manage Permissions
+                    </button>
+                {/if}
             </div>
         </div>
     {/if}
