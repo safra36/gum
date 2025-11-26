@@ -1370,6 +1370,13 @@ export class APIServer {
                 const projectId = parseInt(req.params.projectId);
                 const logPermissionService = require('../services/log-permission.service').LogPermissionService.getInstance();
 
+                if (!currentUser) {
+                    console.error('[LogPermissions] currentUser is null/undefined');
+                    return res.status(401).json({ error: "Not authenticated" });
+                }
+
+                console.log(`[LogPermissions] Fetching permissions for project ${projectId}, user ${currentUser.id} (${currentUser.username})`);
+
                 // Get all permissions for this project from unified Permission table
                 const Permission = require('../entity/Permission').Permission;
                 const { PermissionType } = require('../entity/Permission');
@@ -1377,6 +1384,7 @@ export class APIServer {
                     where: { projectId },
                     relations: ['user', 'logConfig']
                 });
+                console.log(`[LogPermissions] Found ${permissionRecords.length} permission records`);
 
                 // Group permissions by userId + logConfigId to match frontend format
                 const permissionMap = new Map<string, any>();
@@ -1423,6 +1431,7 @@ export class APIServer {
                         p.userId === currentUser.id && p.logConfigId === null
                     );
                     if (!hasAdminRecord) {
+                        console.log(`[LogPermissions] Auto-granting admin permissions to user ${currentUser.id}`);
                         // Add admin permission record for display purposes
                         permissions.push({
                             id: 0, // Placeholder ID
@@ -1438,6 +1447,7 @@ export class APIServer {
                     }
                 }
 
+                console.log(`[LogPermissions] Returning ${permissions.length} permission groups`);
                 res.status(200).json({ permissions });
             } catch (error) {
                 console.error('Error fetching log permissions:', error);
