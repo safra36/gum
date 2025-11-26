@@ -1,9 +1,9 @@
 <script lang="ts">
     import { createEventDispatcher, onMount } from "svelte";
-    import { X, Plus, Trash2 } from "lucide-svelte";
+    import { X, Plus, Trash2, Check } from "lucide-svelte";
     import { addToast } from "$lib/stores/toast";
     import type { LogConfig, LogPermissionType } from "$lib/types";
-    import { getLogPermissions, setLogPermission } from "$lib/services/api";
+    import { getLogPermissions, setLogPermission, getUsers } from "$lib/services/api";
 
     export let projectId: number;
     export let logConfigs: LogConfig[] = [];
@@ -26,6 +26,12 @@
     let users: User[] = [];
     let permissions: PermissionRow[] = [];
     let isLoading = false;
+    let isSavingNewPermission = false;
+
+    // Form state for adding new permissions
+    let selectedUserId: number | null = null;
+    let selectedLogConfigId: number | null = null;
+    let selectedPermissions: LogPermissionType[] = [];
 
     const availablePermissions: { value: LogPermissionType; label: string }[] = [
         { value: "view_logs", label: "View Logs" },
@@ -34,8 +40,18 @@
     ];
 
     onMount(async () => {
+        await loadUsers();
         await loadPermissions();
     });
+
+    async function loadUsers() {
+        try {
+            const result = await getUsers();
+            users = result;
+        } catch (error) {
+            console.error("Failed to load users:", error);
+        }
+    }
 
     async function loadPermissions() {
         isLoading = true;
@@ -52,6 +68,43 @@
             addToast(`Failed to load permissions: ${error}`, "error");
         } finally {
             isLoading = false;
+        }
+    }
+
+    function toggleNewPermission(permission: LogPermissionType) {
+        const index = selectedPermissions.indexOf(permission);
+        if (index > -1) {
+            selectedPermissions = selectedPermissions.filter((p) => p !== permission);
+        } else {
+            selectedPermissions = [...selectedPermissions, permission];
+        }
+    }
+
+    async function addNewPermission() {
+        if (!selectedUserId || selectedPermissions.length === 0) {
+            addToast("Please select a user and at least one permission", "warning");
+            return;
+        }
+
+        isSavingNewPermission = true;
+        try {
+            await setLogPermission(
+                projectId,
+                selectedUserId,
+                selectedLogConfigId || null,
+                selectedPermissions
+            );
+            addToast("Permission added successfully", "success");
+            // Reset form
+            selectedUserId = null;
+            selectedLogConfigId = null;
+            selectedPermissions = [];
+            // Reload permissions
+            await loadPermissions();
+        } catch (error) {
+            addToast(`Failed to add permission: ${error}`, "error");
+        } finally {
+            isSavingNewPermission = false;
         }
     }
 
@@ -121,6 +174,77 @@
                 </p>
             </div>
 
+            <!-- Add New Permission Form -->
+            <div class="mb-8 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <h3 class="text-lg font-semibold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+                    <Plus size={20} />
+                    Grant New Permission
+                </h3>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <!-- User Selection -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            User
+                        </label>
+                        <select
+                            bind:value={selectedUserId}
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value={null}>-- Select a user --</option>
+                            {#each users as user}
+                                <option value={user.id}>{user.username}</option>
+                            {/each}
+                        </select>
+                    </div>
+
+                    <!-- Log Config Selection -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Log Config (or Project Default)
+                        </label>
+                        <select
+                            bind:value={selectedLogConfigId}
+                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value={null}>Project Default</option>
+                            {#each logConfigs as config}
+                                <option value={config.id}>{config.name}</option>
+                            {/each}
+                        </select>
+                    </div>
+
+                    <!-- Permissions Selection -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Permissions
+                        </label>
+                        <div class="space-y-2">
+                            {#each availablePermissions as perm}
+                                <label class="flex items-center text-sm">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedPermissions.includes(perm.value)}
+                                        on:change={() => toggleNewPermission(perm.value)}
+                                        class="mr-2 w-4 h-4 rounded border-gray-300"
+                                    />
+                                    <span class="text-gray-700 dark:text-gray-300">{perm.label}</span>
+                                </label>
+                            {/each}
+                        </div>
+                    </div>
+                </div>
+
+                <button
+                    on:click={addNewPermission}
+                    disabled={isSavingNewPermission || !selectedUserId || selectedPermissions.length === 0}
+                    class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-colors"
+                >
+                    <Plus size={18} />
+                    Grant Permission
+                </button>
+            </div>
+
             {#if isLoading}
                 <div class="text-center py-8">
                     <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
@@ -129,8 +253,10 @@
             {:else if permissions.length === 0}
                 <div class="text-center py-8 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                     <p class="text-gray-600 dark:text-gray-400">No permissions configured yet.</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">Use the form above to grant your first permission!</p>
                 </div>
             {:else}
+                <h4 class="text-lg font-semibold text-gray-800 dark:text-white mb-4">Current Permissions</h4>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead class="text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
