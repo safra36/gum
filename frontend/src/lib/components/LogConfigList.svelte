@@ -88,7 +88,13 @@
                             class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                         >
                             <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{config.name}</td>
-                            <td class="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs truncate">{config.command}</td>
+                            <td class="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs truncate">
+                                {#if hasPermission("view_logs") || hasPermission("configure_logs")}
+                                    {config.command}
+                                {:else}
+                                    <span class="text-gray-500 italic">••••••••••••••••</span>
+                                {/if}
+                            </td>
                             <td class="px-4 py-3">
                                 <span
                                     class="inline-flex px-3 py-1 rounded-full text-xs font-medium {config.enabled ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'}"

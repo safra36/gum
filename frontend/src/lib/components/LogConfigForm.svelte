@@ -1,10 +1,11 @@
 <script lang="ts">
     import { createEventDispatcher } from "svelte";
-    import { X } from "lucide-svelte";
+    import { X, Lock } from "lucide-svelte";
     import type { LogConfig } from "$lib/types";
 
     export let config: LogConfig | null = null;
     export let isLoading: boolean = false;
+    export let hasPermission: boolean = true;
 
     const dispatch = createEventDispatcher<{
         save: LogConfig;
@@ -68,6 +69,19 @@
         </div>
 
         <div class="p-6 space-y-6">
+            {#if !hasPermission}
+                <div class="flex items-center justify-center py-12">
+                    <div class="text-center">
+                        <Lock size={48} class="mx-auto text-red-500 mb-4" />
+                        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Permission Denied</h3>
+                        <p class="text-gray-600 dark:text-gray-400">
+                            You don't have permission to configure log settings.
+                        </p>
+                    </div>
+                </div>
+            {/if}
+
+            {#if hasPermission}
             <!-- Name Field -->
             <div>
                 <label for="name" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -148,9 +162,11 @@
                     Enable this log configuration
                 </label>
             </div>
+            {/if}
         </div>
 
         <!-- Form Actions -->
+        {#if hasPermission}
         <div class="flex items-center justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
             <button
                 on:click={handleCancel}
@@ -169,6 +185,16 @@
                 {config ? "Update" : "Create"} Configuration
             </button>
         </div>
+        {:else}
+        <div class="flex items-center justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
+            <button
+                on:click={handleCancel}
+                class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+            >
+                Close
+            </button>
+        </div>
+        {/if}
     </div>
 </div>
 

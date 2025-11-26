@@ -1,12 +1,13 @@
 <script lang="ts">
     import { createEventDispatcher, onMount } from "svelte";
-    import { X, Plus, Trash2, Check } from "lucide-svelte";
+    import { X, Plus, Trash2, Check, Lock } from "lucide-svelte";
     import { addToast } from "$lib/stores/toast";
     import type { LogConfig, LogPermissionType } from "$lib/types";
     import { getLogPermissions, setLogPermission, getUsers } from "$lib/services/api";
 
     export let projectId: number;
     export let logConfigs: LogConfig[] = [];
+    export let userHasPermission: boolean = true;
 
     const dispatch = createEventDispatcher<{ close: void }>();
 
@@ -168,6 +169,17 @@
 
         <!-- Content -->
         <div class="p-6">
+            {#if !userHasPermission}
+                <div class="flex items-center justify-center py-12">
+                    <div class="text-center">
+                        <Lock size={48} class="mx-auto text-red-500 mb-4" />
+                        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Permission Denied</h3>
+                        <p class="text-gray-600 dark:text-gray-400">
+                            You don't have permission to manage log permissions for this project.
+                        </p>
+                    </div>
+                </div>
+            {:else}
             <div class="mb-6">
                 <p class="text-gray-600 dark:text-gray-400 mb-4">
                     Manage who can view and configure log streams for this project.
@@ -310,6 +322,7 @@
                         </tbody>
                     </table>
                 </div>
+            {/if}
             {/if}
         </div>
 

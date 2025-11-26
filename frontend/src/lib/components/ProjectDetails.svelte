@@ -905,6 +905,7 @@
 {#if showLogForm}
     <LogConfigForm
         config={selectedLogConfig}
+        hasPermission={userLogPermissions.includes("configure_logs")}
         on:save={handleSaveLogConfig}
         on:cancel={() => { showLogForm = false; selectedLogConfig = null; }}
     />
@@ -927,6 +928,7 @@
     <LogPermissionManager
         projectId={project.id}
         logConfigs={logConfigs}
+        userHasPermission={userLogPermissions.includes("manage_log_permissions")}
         on:close={() => showLogPermissionManager = false}
     />
 {/if}
