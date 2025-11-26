@@ -1,16 +1,26 @@
 import { AppDataSource } from "../data-source";
-import { LogPermission, LogPermissionType } from "../entity/LogPermission";
+import { Permission, PermissionType } from "../entity/Permission";
 import { User } from "../entity/User";
 import { Project } from "../entity/Project";
 import { LogConfig } from "../entity/LogConfig";
+
+export enum LogPermissionTypeEnum {
+    VIEW_LOGS = "view_logs",
+    CONFIGURE_LOGS = "configure_logs",
+    DELETE_LOGS = "delete_logs",
+    MANAGE_LOG_PERMISSIONS = "manage_log_permissions"
+}
 
 export interface SetLogPermissionDTO {
     userId: number;
     projectId: number;
     logConfigId?: number; // null means project-level default
-    permissions: LogPermissionType[];
+    permissions: LogPermissionTypeEnum[];
 }
 
+/**
+ * Log Permission Service - manages log-specific permissions using the unified Permission table
+ */
 export class LogPermissionService {
     private static instance: LogPermissionService;
 
@@ -24,9 +34,9 @@ export class LogPermissionService {
     }
 
     /**
-     * Grant log permissions to a user
+     * Grant/set log permissions to a user (stores in unified Permission table)
      */
-    public async setLogPermission(dto: SetLogPermissionDTO): Promise<LogPermission> {
+    public async setLogPermission(dto: SetLogPermissionDTO): Promise<{ permissions: any[] }> {
         // Verify user exists
         const user = await AppDataSource.getRepository(User).findOne({
             where: { id: dto.userId }
@@ -53,57 +63,107 @@ export class LogPermissionService {
             }
         }
 
-        // Check if permission already exists
-        let permission = await AppDataSource.getRepository(LogPermission).findOne({
-            where: {
-                userId: dto.userId,
-                projectId: dto.projectId,
-                logConfigId: dto.logConfigId || null
-            }
-        });
+        const permissionRepository = AppDataSource.getRepository(Permission);
 
-        if (permission) {
-            // Update existing permission
-            permission.permissions = dto.permissions;
-        } else {
-            // Create new permission
-            permission = new LogPermission();
-            permission.userId = dto.userId;
-            permission.user = user;
-            permission.projectId = dto.projectId;
-            permission.project = project;
-            if (dto.logConfigId) {
-                permission.logConfigId = dto.logConfigId;
+        // Create/update individual Permission records for each permission type
+        const savedPermissions = [];
+        for (const permType of dto.permissions) {
+            let permission = await permissionRepository.findOne({
+                where: {
+                    userId: dto.userId,
+                    projectId: dto.projectId,
+                    logConfigId: dto.logConfigId || null,
+                    type: permType as any
+                }
+            });
+
+            if (!permission) {
+                permission = permissionRepository.create({
+                    userId: dto.userId,
+                    projectId: dto.projectId,
+                    logConfigId: dto.logConfigId || null,
+                    type: permType as any,
+                    granted: true
+                });
+            } else {
+                permission.granted = true;
             }
-            permission.permissions = dto.permissions;
+
+            const saved = await permissionRepository.save(permission);
+            savedPermissions.push(saved);
         }
 
-        return await AppDataSource.manager.save(permission);
+        return { permissions: savedPermissions };
     }
 
     /**
-     * Get all permissions for a user in a project
+     * Check if user has a specific log permission
      */
-    public async getUserProjectPermissions(
+    public async hasLogPermission(
         userId: number,
-        projectId: number
-    ): Promise<LogPermission[]> {
-        return await AppDataSource.getRepository(LogPermission).find({
-            where: { userId, projectId }
+        projectId: number,
+        logConfigId: number | null,
+        requiredPermission: LogPermissionTypeEnum
+    ): Promise<boolean> {
+        // Admin bypass
+        const user = await AppDataSource.getRepository(User).findOne({
+            where: { id: userId }
         });
+        if (!user) return false;
+        if (user.role === "admin") return true;
+
+        // Check log-specific permission
+        let permission = await AppDataSource.getRepository(Permission).findOne({
+            where: {
+                userId,
+                projectId,
+                logConfigId: logConfigId || null,
+                type: requiredPermission as any,
+                granted: true
+            }
+        });
+
+        if (permission) return true;
+
+        // Fall back to project-level permission (logConfigId = null)
+        permission = await AppDataSource.getRepository(Permission).findOne({
+            where: {
+                userId,
+                projectId,
+                logConfigId: null,
+                type: requiredPermission as any,
+                granted: true
+            }
+        });
+
+        return !!permission;
     }
 
     /**
-     * Get permissions for a user for a specific log config
+     * Get user's log permissions for a project (combines all individual Permission records)
      */
     public async getUserLogPermissions(
         userId: number,
         projectId: number,
-        logConfigId: number
-    ): Promise<LogPermission | null> {
-        return await AppDataSource.getRepository(LogPermission).findOne({
-            where: { userId, projectId, logConfigId }
+        logConfigId?: number
+    ): Promise<LogPermissionTypeEnum[]> {
+        const permissions = await AppDataSource.getRepository(Permission).find({
+            where: {
+                userId,
+                projectId,
+                logConfigId: logConfigId || null,
+                granted: true
+            }
         });
+
+        return permissions
+            .map(p => p.type)
+            .filter(type => [
+                "view_logs",
+                "configure_logs",
+                "delete_logs",
+                "manage_log_permissions"
+            ].includes(type)) as LogPermissionTypeEnum[];
     }
 
     /**
@@ -112,75 +172,64 @@ export class LogPermissionService {
     public async getProjectDefaultPermissions(
         userId: number,
         projectId: number
-    ): Promise<LogPermission | null> {
-        return await AppDataSource.getRepository(LogPermission).findOne({
-            where: { userId, projectId, logConfigId: null }
+    ): Promise<LogPermissionTypeEnum[]> {
+        const permissions = await AppDataSource.getRepository(Permission).find({
+            where: {
+                userId,
+                projectId,
+                logConfigId: null,
+                granted: true
+            }
         });
+
+        return permissions
+            .map(p => p.type)
+            .filter(type => [
+                "view_logs",
+                "configure_logs",
+                "delete_logs",
+                "manage_log_permissions"
+            ].includes(type)) as LogPermissionTypeEnum[];
     }
 
     /**
-     * Check if user has a specific permission for a log config
+     * Get all permissions for a project (for UI management)
      */
-    public async hasLogPermission(
-        userId: number,
-        projectId: number,
-        logConfigId: number,
-        requiredPermission: LogPermissionType
-    ): Promise<boolean> {
-        const user = await AppDataSource.getRepository(User).findOne({
-            where: { id: userId }
+    public async getProjectPermissions(projectId: number): Promise<any[]> {
+        const permissions = await AppDataSource.getRepository(Permission).find({
+            where: {
+                projectId,
+                granted: true
+            },
+            relations: ['user', 'logConfig']
         });
 
-        console.log(`[Permission Check] User ${userId} role: ${user?.role}`);
+        // Filter to only log-related permissions
+        const logPermissions = permissions.filter(p =>
+            [
+                "view_logs",
+                "configure_logs",
+                "delete_logs",
+                "manage_log_permissions"
+            ].includes(p.type)
+        );
 
-        // Admins have all permissions
-        if (user?.role === "admin") {
-            console.log(`[Permission Check] User is admin, granting all permissions`);
-            return true;
-        }
-
-        // Check log-specific permission
-        let permission = await this.getUserLogPermissions(userId, projectId, logConfigId);
-        console.log(`[Permission Check] Log-specific permission for user ${userId}, log ${logConfigId}:`, permission?.permissions || 'none');
-        if (permission && permission.permissions.includes(requiredPermission)) {
-            console.log(`[Permission Check] Log-specific permission granted: ${requiredPermission}`);
-            return true;
-        }
-
-        // Check project-level default permission
-        const defaultPermission = await this.getProjectDefaultPermissions(userId, projectId);
-        console.log(`[Permission Check] Project default permission for user ${userId}, project ${projectId}:`, defaultPermission?.permissions || 'none');
-        if (defaultPermission && defaultPermission.permissions.includes(requiredPermission)) {
-            console.log(`[Permission Check] Project default permission granted: ${requiredPermission}`);
-            return true;
-        }
-
-        console.log(`[Permission Check] No permission found for user ${userId} requiring ${requiredPermission}`);
-        return false;
-    }
-
-    /**
-     * Revoke all permissions for a user in a project
-     */
-    public async revokeProjectPermissions(userId: number, projectId: number): Promise<void> {
-        await AppDataSource.getRepository(LogPermission).delete({
-            userId,
-            projectId
+        // Group by user/logConfig for display
+        const grouped: any = {};
+        logPermissions.forEach(p => {
+            const key = `${p.userId}_${p.logConfigId || 'default'}`;
+            if (!grouped[key]) {
+                grouped[key] = {
+                    userId: p.userId,
+                    username: p.user?.username,
+                    logConfigId: p.logConfigId,
+                    logConfigName: p.logConfig?.name || "Project Default",
+                    permissions: []
+                };
+            }
+            grouped[key].permissions.push(p.type);
         });
-    }
 
-    /**
-     * Revoke permissions for a specific log config
-     */
-    public async revokeLogPermission(
-        userId: number,
-        projectId: number,
-        logConfigId: number
-    ): Promise<void> {
-        await AppDataSource.getRepository(LogPermission).delete({
-            userId,
-            projectId,
-            logConfigId
-        });
+        return Object.values(grouped);
     }
 }

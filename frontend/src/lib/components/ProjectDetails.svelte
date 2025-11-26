@@ -10,7 +10,7 @@
     import LogConfigList from "./LogConfigList.svelte";
     import LogConfigForm from "./LogConfigForm.svelte";
     import LiveLogsViewer from "./LiveLogsViewer.svelte";
-    import LogPermissionManager from "./LogPermissionManager.svelte";
+    import UnifiedPermissionManager from "./UnifiedPermissionManager.svelte";
     import { executeStaging, executeProject, fetchGitLog, fetchGitBranches, switchGitBranch, revertToCommit, switchToHead, setCronJob, getCronJob, removeCronJob, fetchLogConfigs, createLogConfig, updateLogConfig, deleteLogConfig, getLogPermissions } from "../services/api";
     import type { Project, ExecutionResult, GitLogEntry, LogConfig } from "$lib/types";
     import { permissions, user } from '$lib/stores/user';
@@ -382,7 +382,7 @@
 
             // If user is admin and has no explicit permissions, grant all permissions
             if ($user?.role === 'admin' && userLogPermissions.length === 0) {
-                userLogPermissions = ["view_logs", "configure_logs", "manage_log_permissions"];
+                userLogPermissions = ["view_logs", "configure_logs", "delete_logs", "manage_log_permissions"];
                 userCanManageLogPermissions = true;
             }
         } catch (error) {
@@ -929,12 +929,12 @@
     />
 {/if}
 
-<!-- LOG PERMISSION MANAGER MODAL -->
+<!-- UNIFIED PERMISSION MANAGER MODAL -->
 {#if showLogPermissionManager && project}
-    <LogPermissionManager
+    <UnifiedPermissionManager
         projectId={project.id}
         logConfigs={logConfigs}
-        userHasPermission={userLogPermissions.includes("manage_log_permissions")}
+        userHasManagePermission={userCanManageLogPermissions}
         on:close={() => showLogPermissionManager = false}
     />
 {/if}

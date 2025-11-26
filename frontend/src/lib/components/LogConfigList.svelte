@@ -129,6 +129,9 @@
                                         >
                                             <Edit2 size={16} />
                                         </button>
+                                    {/if}
+
+                                    {#if hasPermission("delete_logs")}
                                         <button
                                             on:click={() => handleDeleteConfig(config)}
                                             class="p-2 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
@@ -136,10 +139,10 @@
                                         >
                                             <Trash2 size={16} />
                                         </button>
-                                    {:else}
+                                    {:else if !hasPermission("configure_logs")}
                                         <div
                                             class="p-2 text-gray-400 cursor-not-allowed"
-                                            title="No permission to configure logs"
+                                            title="No permission to configure or delete logs"
                                         >
                                             <Lock size={16} />
                                         </div>

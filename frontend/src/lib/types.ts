@@ -76,6 +76,7 @@ export interface LogConfig {
 export enum LogPermissionType {
     VIEW_LOGS = "view_logs",
     CONFIGURE_LOGS = "configure_logs",
+    DELETE_LOGS = "delete_logs",
     MANAGE_LOG_PERMISSIONS = "manage_log_permissions"
 }
 

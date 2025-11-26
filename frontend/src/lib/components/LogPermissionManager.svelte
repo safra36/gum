@@ -37,6 +37,7 @@
     const availablePermissions: { value: LogPermissionType; label: string }[] = [
         { value: "view_logs", label: "View Logs" },
         { value: "configure_logs", label: "Configure Logs" },
+        { value: "delete_logs", label: "Delete Logs" },
         { value: "manage_log_permissions", label: "Manage Permissions" }
     ];
 

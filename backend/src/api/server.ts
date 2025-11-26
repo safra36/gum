@@ -1217,15 +1217,15 @@ export class APIServer {
                     return res.status(403).json({ error: "Log configuration does not belong to this project" });
                 }
 
-                // Check if user has configure_logs permission for this log
-                const hasPermission = await logPermissionService.hasLogPermission(
+                // Check if user has delete_logs permission for this log
+                const hasDeletePermission = await logPermissionService.hasLogPermission(
                     currentUser.id,
                     projectId,
                     logId,
-                    "configure_logs"
+                    "delete_logs"
                 );
 
-                if (!hasPermission) {
+                if (!hasDeletePermission) {
                     return res.status(403).json({ error: "You don't have permission to delete this log configuration" });
                 }
 
@@ -1388,7 +1388,7 @@ export class APIServer {
                             userId: currentUser.id,
                             projectId,
                             logConfigId: null,
-                            permissions: ['view_logs', 'configure_logs', 'manage_log_permissions'],
+                            permissions: ['view_logs', 'configure_logs', 'delete_logs', 'manage_log_permissions'],
                             user: currentUser,
                             logConfig: null,
                             createdAt: new Date(),

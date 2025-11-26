@@ -8,7 +8,6 @@ import { ExecutionHistory } from "./entity/ExecutionHistory"
 import { Permission } from "./entity/Permission"
 import { ProjectPermission } from "./entity/ProjectPermission"
 import { LogConfig } from "./entity/LogConfig"
-import { LogPermission } from "./entity/LogPermission"
 
 const entities = [
     Project,
@@ -18,8 +17,8 @@ const entities = [
     ExecutionHistory,
     Permission,
     ProjectPermission,
-    LogConfig,
-    LogPermission
+    LogConfig
+    // LogPermission is deprecated - use Permission table with logConfigId instead
 ]
 
 export const AppDataSource = new DataSource({

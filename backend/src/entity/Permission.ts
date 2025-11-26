@@ -2,13 +2,19 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 import { User } from "./User"
 import { Project } from "./Project"
 import { Stage } from "./Stage"
+import { LogConfig } from "./LogConfig"
 
 export enum PermissionType {
+    // Project-level permissions
     EXECUTE = "execute",
     VIEW = "view",
     EDIT = "edit",
+    VIEW_EXECUTION_HISTORY = "view_execution_history",
+    // Log permissions (can be project-level or log-config-level)
     VIEW_LOGS = "view_logs",
-    VIEW_EXECUTION_HISTORY = "view_execution_history"
+    CONFIGURE_LOGS = "configure_logs",
+    DELETE_LOGS = "delete_logs",
+    MANAGE_LOG_PERMISSIONS = "manage_log_permissions"
 }
 
 @Entity()
@@ -36,6 +42,13 @@ export class Permission {
 
     @Column({ nullable: true })
     stageId: number
+
+    @ManyToOne(() => LogConfig, { nullable: true })
+    @JoinColumn({ name: "logConfigId" })
+    logConfig: LogConfig
+
+    @Column({ nullable: true })
+    logConfigId: number
 
     @Column({
         type: "simple-enum",
