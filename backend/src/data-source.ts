@@ -7,6 +7,8 @@ import { User } from "./entity/User"
 import { ExecutionHistory } from "./entity/ExecutionHistory"
 import { Permission } from "./entity/Permission"
 import { ProjectPermission } from "./entity/ProjectPermission"
+import { LogConfig } from "./entity/LogConfig"
+import { LogPermission } from "./entity/LogPermission"
 
 const entities = [
     Project,
@@ -15,7 +17,9 @@ const entities = [
     User,
     ExecutionHistory,
     Permission,
-    ProjectPermission
+    ProjectPermission,
+    LogConfig,
+    LogPermission
 ]
 
 export const AppDataSource = new DataSource({

@@ -556,6 +556,106 @@ export async function getAllProjectPermissions(): Promise<any[]> {
     return response.json();
 }
 
+// LOG CONFIG FUNCTIONS
+
+export async function fetchLogConfigs(projectId: number) {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/logs`, {
+        method: "GET",
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch log configurations');
+    }
+    return response.json();
+}
+
+export async function createLogConfig(projectId: number, config: any) {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/logs`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(config)
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to create log configuration');
+    }
+    return response.json();
+}
+
+export async function updateLogConfig(projectId: number, logId: number, config: any) {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/logs/${logId}`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(config)
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to update log configuration');
+    }
+    return response.json();
+}
+
+export async function deleteLogConfig(projectId: number, logId: number) {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/logs/${logId}`, {
+        method: "DELETE",
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to delete log configuration');
+    }
+    return response.json();
+}
+
+export function streamLogs(projectId: number, logId: number) {
+    return new EventSource(`${PUBLIC_BASE_URL}/execute-logs-stream/${projectId}/${logId}?token=${encodeURIComponent(token)}`);
+}
+
+export async function getLogPermissions(projectId: number) {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/log-permissions`, {
+        method: "GET",
+        headers: {
+            "Authorization": `Bearer ${token}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch log permissions');
+    }
+    return response.json();
+}
+
+export async function setLogPermission(projectId: number, userId: number, logConfigId: number | null, permissions: string[]) {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/log-permissions`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+            userId,
+            logConfigId,
+            permissions
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to set log permissions');
+    }
+    return response.json();
+}
+
 // Create an object to export all functions
 export const api = {
     loginUser,
@@ -590,5 +690,12 @@ export const api = {
     grantProjectAccess,
     revokeProjectAccess,
     getProjectUsers,
-    getAllProjectPermissions
+    getAllProjectPermissions,
+    fetchLogConfigs,
+    createLogConfig,
+    updateLogConfig,
+    deleteLogConfig,
+    streamLogs,
+    getLogPermissions,
+    setLogPermission
 };

@@ -1073,8 +1073,233 @@ export class APIServer {
             }
         });
 
+        // LOG CONFIGURATION ENDPOINTS
 
+        // Get all log configs for a project
+        this.app.get('/project/:projectId/logs', this.authenticateRequest, this.checkAccess(AuthLevels.ViewProject), this.checkProjectAccess(ProjectAccessLevel.VIEW), async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.projectId);
+                const logConfigService = require('../services/log-config.service').LogConfigService.getInstance();
 
+                const logConfigs = await logConfigService.getLogConfigsByProject(projectId);
+                res.status(200).json({ logConfigs });
+            } catch (error) {
+                console.error('Error fetching log configs:', error);
+                res.status(500).json({
+                    error: "Failed to fetch log configurations",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        // Create a new log config
+        this.app.post('/project/:projectId/logs', this.authenticateRequest, this.checkAccess(AuthLevels.EditProject), this.checkProjectAccess(ProjectAccessLevel.VIEW), async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.projectId);
+                const { name, command, description, enabled, workingDir } = req.body;
+                const logConfigService = require('../services/log-config.service').LogConfigService.getInstance();
+
+                const logConfig = await logConfigService.createLogConfig(projectId, {
+                    name,
+                    command,
+                    description,
+                    enabled,
+                    workingDir
+                });
+
+                res.status(201).json({ logConfig });
+            } catch (error) {
+                console.error('Error creating log config:', error);
+                res.status(500).json({
+                    error: "Failed to create log configuration",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        // Update a log config
+        this.app.put('/project/:projectId/logs/:logId', this.authenticateRequest, this.checkAccess(AuthLevels.EditProject), this.checkProjectAccess(ProjectAccessLevel.VIEW), async (req: Request, res: Response) => {
+            try {
+                const logId = parseInt(req.params.logId);
+                const { name, command, description, enabled, workingDir } = req.body;
+                const logConfigService = require('../services/log-config.service').LogConfigService.getInstance();
+
+                const logConfig = await logConfigService.updateLogConfig(logId, {
+                    name,
+                    command,
+                    description,
+                    enabled,
+                    workingDir
+                });
+
+                res.status(200).json({ logConfig });
+            } catch (error) {
+                console.error('Error updating log config:', error);
+                res.status(500).json({
+                    error: "Failed to update log configuration",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        // Delete a log config
+        this.app.delete('/project/:projectId/logs/:logId', this.authenticateRequest, this.checkAccess(AuthLevels.EditProject), this.checkProjectAccess(ProjectAccessLevel.VIEW), async (req: Request, res: Response) => {
+            try {
+                const logId = parseInt(req.params.logId);
+                const logConfigService = require('../services/log-config.service').LogConfigService.getInstance();
+
+                await logConfigService.deleteLogConfig(logId);
+                res.status(200).json({ message: "Log configuration deleted successfully" });
+            } catch (error) {
+                console.error('Error deleting log config:', error);
+                res.status(500).json({
+                    error: "Failed to delete log configuration",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        // Stream log output via SSE
+        this.app.get('/execute-logs-stream/:projectId/:logId', async (req: Request, res: Response) => {
+            const { projectId, logId } = req.params;
+            const token = req.query.token as string;
+
+            try {
+                if (!token) {
+                    return res.status(401).json({ error: "No authentication token provided" });
+                }
+
+                const user = await this.authService.verifyLogin(token);
+                if (!user) {
+                    return res.status(401).json({ error: "Invalid authentication token" });
+                }
+
+                const logConfigService = require('../services/log-config.service').LogConfigService.getInstance();
+                const logPermissionService = require('../services/log-permission.service').LogPermissionService.getInstance();
+                const { LogPermissionType } = require('../entity/LogPermission');
+
+                // Validate log config exists and belongs to project
+                const logConfig = await logConfigService.validateLogConfig(parseInt(projectId), parseInt(logId));
+
+                // Check if user has permission to view logs
+                const hasPermission = await logPermissionService.hasLogPermission(
+                    user.id,
+                    parseInt(projectId),
+                    parseInt(logId),
+                    LogPermissionType.VIEW_LOGS
+                );
+
+                if (!hasPermission) {
+                    return res.status(403).json({ error: "Permission denied to view these logs" });
+                }
+
+                // Set SSE headers
+                res.writeHead(200, {
+                    'Content-Type': 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Cache-Control'
+                });
+
+                // Send initial connection event
+                res.write(`data: ${JSON.stringify({ type: 'connected', logId })}\n\n`);
+
+                const executorService = ExecutorService.getInstance();
+
+                // Execute the log command
+                const workingDir = logConfig.workingDir || (await this.projectService.getProjectById(parseInt(projectId)))?.working_dir;
+
+                try {
+                    const { result } = await executorService.executeScriptWithVariables(
+                        logConfig.command,
+                        [],
+                        workingDir,
+                        new Map()
+                    );
+
+                    // Send output line by line
+                    if (result.stdout) {
+                        result.stdout.split('\n').forEach(line => {
+                            if (line.trim()) {
+                                res.write(`data: ${JSON.stringify({ type: 'stdout', data: line, timestamp: Date.now() })}\n\n`);
+                            }
+                        });
+                    }
+
+                    if (result.stderr) {
+                        result.stderr.split('\n').forEach(line => {
+                            if (line.trim()) {
+                                res.write(`data: ${JSON.stringify({ type: 'stderr', data: line, timestamp: Date.now() })}\n\n`);
+                            }
+                        });
+                    }
+
+                    // Send completion event
+                    res.write(`data: ${JSON.stringify({ type: 'close', result, timestamp: Date.now() })}\n\n`);
+                } catch (execError) {
+                    res.write(`data: ${JSON.stringify({ type: 'error', error: execError instanceof Error ? execError.message : String(execError), timestamp: Date.now() })}\n\n`);
+                } finally {
+                    res.end();
+                }
+            } catch (error) {
+                console.error('Error in log stream:', error);
+                if (!res.headersSent) {
+                    res.status(500).json({
+                        error: "Failed to stream logs",
+                        details: error instanceof Error ? error.message : String(error)
+                    });
+                } else {
+                    res.end();
+                }
+            }
+        });
+
+        // Get log permissions for a project
+        this.app.get('/project/:projectId/log-permissions', this.authenticateRequest, this.checkAccess(AuthLevels.ManageUsers), async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.projectId);
+                const logPermissionService = require('../services/log-permission.service').LogPermissionService.getInstance();
+
+                // Get all permissions for this project
+                const permissions = await require('../data-source').AppDataSource.getRepository(require('../entity/LogPermission').LogPermission).find({
+                    where: { projectId },
+                    relations: ['user', 'logConfig']
+                });
+
+                res.status(200).json({ permissions });
+            } catch (error) {
+                console.error('Error fetching log permissions:', error);
+                res.status(500).json({
+                    error: "Failed to fetch log permissions",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        // Set log permissions
+        this.app.post('/project/:projectId/log-permissions', this.authenticateRequest, this.checkAccess(AuthLevels.ManageUsers), async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.projectId);
+                const { userId, logConfigId, permissions } = req.body;
+                const logPermissionService = require('../services/log-permission.service').LogPermissionService.getInstance();
+
+                const logPermission = await logPermissionService.setLogPermission({
+                    userId,
+                    projectId,
+                    logConfigId,
+                    permissions
+                });
+
+                res.status(200).json({ logPermission });
+            } catch (error) {
+                console.error('Error setting log permissions:', error);
+                res.status(500).json({
+                    error: "Failed to set log permissions",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
 
     }
 

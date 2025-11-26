@@ -60,3 +60,30 @@ export interface LoginResponseDto {
     access_token : string
 
 }
+
+export interface LogConfig {
+    id: number;
+    name: string;
+    command: string;
+    description?: string;
+    enabled: boolean;
+    workingDir?: string;
+    projectId: number;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export enum LogPermissionType {
+    VIEW_LOGS = "view_logs",
+    CONFIGURE_LOGS = "configure_logs",
+    MANAGE_LOG_PERMISSIONS = "manage_log_permissions"
+}
+
+export interface LogPermission {
+    id: number;
+    userId: number;
+    projectId: number;
+    logConfigId?: number;
+    permissions: LogPermissionType[];
+    createdAt?: string;
+}

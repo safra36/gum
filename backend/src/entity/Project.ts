@@ -1,6 +1,7 @@
 import { Column, Entity, OneToOne, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 import { StagingConfig } from "./StagingConfig";
 import { ProjectPermission } from "./ProjectPermission";
+import { LogConfig } from "./LogConfig";
 
 @Entity()
 export class Project {
@@ -22,5 +23,8 @@ export class Project {
 
     @OneToMany(() => ProjectPermission, projectPermission => projectPermission.project)
     projectPermissions: ProjectPermission[];
-    
+
+    @OneToMany(() => LogConfig, logConfig => logConfig.project)
+    logConfigs: LogConfig[];
+
 }
