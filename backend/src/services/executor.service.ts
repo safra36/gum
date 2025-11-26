@@ -361,7 +361,7 @@ export class ExecutorService {
             try {
                 const substitutedScript = this.substituteArgs(script, args);
                 const { command, options } = this.buildCommandAndOptions(substitutedScript, workingDirectory);
-                
+
 
                 const childProcess = exec(command, options, (error, stdoutData, stderrData) => {
                     stdout += stdoutData;
@@ -374,7 +374,7 @@ export class ExecutorService {
                         stderr,
                         exitCode: code
                     });
-                    
+
                     resolve({
                         stdout,
                         stderr,
@@ -389,6 +389,84 @@ export class ExecutorService {
                 reject(error);
             }
         });
+    }
+
+    /**
+     * Execute a log streaming command and emit events in real-time
+     * Returns an EventEmitter that emits: 'stdout', 'stderr', 'close', 'error'
+     */
+    public executeLogStream(command: string, workingDirectory?: string): EventEmitter {
+        const emitter = new EventEmitter();
+
+        console.log(`[LogStream] Starting command: ${command}`);
+        console.log(`[LogStream] Working directory: ${workingDirectory || 'project default'}`);
+
+        try {
+            const platform = os.platform();
+            let shellCommand: string;
+            let shellArgs: string[];
+            let spawnOptions: any;
+
+            if (platform === 'win32') {
+                shellCommand = 'cmd.exe';
+                shellArgs = ['/c', command];
+            } else {
+                shellCommand = '/bin/sh';
+                shellArgs = ['-c', command];
+            }
+
+            spawnOptions = {
+                stdio: ['pipe', 'pipe', 'pipe'],
+                shell: false
+            };
+
+            if (workingDirectory) {
+                spawnOptions.cwd = workingDirectory;
+            }
+
+            const childProcess = spawn(shellCommand, shellArgs, spawnOptions);
+
+            // Handle spawn errors
+            childProcess.on('error', (error) => {
+                console.error(`[LogStream] Spawn error: ${error.message}`);
+                emitter.emit('error', error.message);
+            });
+
+            // Stream stdout in real-time
+            childProcess.stdout.on('data', (data) => {
+                const output = data.toString();
+                console.log(`[LogStream] stdout: ${output.trim()}`);
+                emitter.emit('stdout', output);
+            });
+
+            // Stream stderr in real-time
+            childProcess.stderr.on('data', (data) => {
+                const output = data.toString();
+                console.log(`[LogStream] stderr: ${output.trim()}`);
+                emitter.emit('stderr', output);
+            });
+
+            // Handle process close
+            childProcess.on('close', (code) => {
+                console.log(`[LogStream] Process closed with code: ${code}`);
+                emitter.emit('close', { code });
+            });
+
+            // Handle process exit
+            childProcess.on('exit', (code) => {
+                console.log(`[LogStream] Process exited with code: ${code}`);
+            });
+
+            // Store reference to childProcess for potential cleanup
+            (emitter as any).childProcess = childProcess;
+
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            console.error(`[LogStream] Error: ${errorMsg}`);
+            emitter.emit('error', errorMsg);
+        }
+
+        return emitter;
     }
 
 

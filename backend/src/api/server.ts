@@ -1207,41 +1207,55 @@ export class APIServer {
 
                 const executorService = ExecutorService.getInstance();
 
-                // Execute the log command
+                // Get working directory
                 const workingDir = logConfig.workingDir || (await this.projectService.getProjectById(parseInt(projectId)))?.working_dir;
 
-                try {
-                    const { result } = await executorService.executeScriptWithVariables(
-                        logConfig.command,
-                        [],
-                        workingDir,
-                        new Map()
-                    );
+                // Execute the log command with real-time streaming
+                const logStream = executorService.executeLogStream(logConfig.command, workingDir);
 
-                    // Send output line by line
-                    if (result.stdout) {
-                        result.stdout.split('\n').forEach(line => {
-                            if (line.trim()) {
-                                res.write(`data: ${JSON.stringify({ type: 'stdout', data: line, timestamp: Date.now() })}\n\n`);
-                            }
-                        });
-                    }
+                // Handle stdout events
+                logStream.on('stdout', (data: string) => {
+                    // Send each line as it comes
+                    data.split('\n').forEach(line => {
+                        if (line.trim()) {
+                            res.write(`data: ${JSON.stringify({ type: 'stdout', data: line, timestamp: Date.now() })}\n\n`);
+                        }
+                    });
+                });
 
-                    if (result.stderr) {
-                        result.stderr.split('\n').forEach(line => {
-                            if (line.trim()) {
-                                res.write(`data: ${JSON.stringify({ type: 'stderr', data: line, timestamp: Date.now() })}\n\n`);
-                            }
-                        });
-                    }
+                // Handle stderr events
+                logStream.on('stderr', (data: string) => {
+                    data.split('\n').forEach(line => {
+                        if (line.trim()) {
+                            res.write(`data: ${JSON.stringify({ type: 'stderr', data: line, timestamp: Date.now() })}\n\n`);
+                        }
+                    });
+                });
 
-                    // Send completion event
+                // Handle completion
+                logStream.on('close', (result: any) => {
+                    console.log('[LogStream] Connection closed:', result);
                     res.write(`data: ${JSON.stringify({ type: 'close', result, timestamp: Date.now() })}\n\n`);
-                } catch (execError) {
-                    res.write(`data: ${JSON.stringify({ type: 'error', error: execError instanceof Error ? execError.message : String(execError), timestamp: Date.now() })}\n\n`);
-                } finally {
                     res.end();
-                }
+                });
+
+                // Handle errors
+                logStream.on('error', (error: string) => {
+                    console.error('[LogStream] Stream error:', error);
+                    res.write(`data: ${JSON.stringify({ type: 'error', error, timestamp: Date.now() })}\n\n`);
+                    res.end();
+                });
+
+                // Handle client disconnect
+                res.on('close', () => {
+                    console.log('[LogStream] Client disconnected');
+                    // Kill the child process if it's still running
+                    const childProcess = (logStream as any).childProcess;
+                    if (childProcess) {
+                        childProcess.kill();
+                    }
+                });
+
             } catch (error) {
                 console.error('Error in log stream:', error);
                 if (!res.headersSent) {
