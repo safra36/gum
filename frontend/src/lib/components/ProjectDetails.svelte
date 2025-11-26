@@ -7,9 +7,14 @@
     import GitLog from "./GitLog.svelte";
     import StreamingConsole from "./StreamingConsole.svelte";
     import PermissionGuard from "./PermissionGuard.svelte";
-    import { executeStaging, executeProject, fetchGitLog, fetchGitBranches, switchGitBranch, revertToCommit, switchToHead, setCronJob, getCronJob, removeCronJob } from "../services/api";
-    import type { Project, ExecutionResult, GitLogEntry } from "$lib/types";
+    import LogConfigList from "./LogConfigList.svelte";
+    import LogConfigForm from "./LogConfigForm.svelte";
+    import LiveLogsViewer from "./LiveLogsViewer.svelte";
+    import LogPermissionManager from "./LogPermissionManager.svelte";
+    import { executeStaging, executeProject, fetchGitLog, fetchGitBranches, switchGitBranch, revertToCommit, switchToHead, setCronJob, getCronJob, removeCronJob, fetchLogConfigs, createLogConfig, updateLogConfig, deleteLogConfig } from "../services/api";
+    import type { Project, ExecutionResult, GitLogEntry, LogConfig } from "$lib/types";
     import { permissions } from '$lib/stores/user';
+    import { toast as addToast } from "$lib/stores/toast";
     import { Loader2, FolderOpen, GitBranch, Play, Edit, GitBranchIcon, Check, GitCommit, PenTool, ArrowUp, RotateCcw, Clock, Info, Trash2, Terminal, Lock } from "lucide-svelte";
 
     export let project: Project;
@@ -41,6 +46,14 @@
     let useStreamingExecution = false;
     let currentExecutionMode = 'normal'; // 'normal' or 'streaming'
     let streamingConsoleRef: StreamingConsole;
+
+    // Log Config state
+    let logConfigs: LogConfig[] = [];
+    let showLogForm = false;
+    let selectedLogConfig: LogConfig | null = null;
+    let showLiveLogsViewer = false;
+    let showLogPermissionManager = false;
+    let isLoadingLogs = false;
 
     $: isValidCron = validateCronExpression(cronExpression);
 
@@ -93,6 +106,11 @@
         // Reset revert state
         isRevertingCommit = false;
         revertError = null;
+        // Reset log form state
+        showLogForm = false;
+        selectedLogConfig = null;
+        showLiveLogsViewer = false;
+        showLogPermissionManager = false;
     }
 
     $: if (project.id !== previousProjectId) {
@@ -105,6 +123,8 @@
         currentExecutionMode = 'normal';
         // @ts-ignore
         previousProjectId = project.id;
+        // Load log configs for the new project
+        loadLogConfigs();
     }
 
     $: hasStagingConfig =
@@ -313,11 +333,11 @@
         if (!project.stagingConfig?.stages) {
             return "";
         }
-        
+
         // Combine all stage scripts into one executable script
         const stages = project.stagingConfig.stages;
         const scriptParts = [`#!/bin/bash`, `# Combined script for project: ${project.title}`, ``];
-        
+
         stages.forEach((stage, index) => {
             scriptParts.push(`echo "=== Executing Stage ${index + 1}: ${stage.stageId} ==="`);
             scriptParts.push(stage.script);
@@ -328,10 +348,53 @@
             scriptParts.push(`echo "Stage ${stage.stageId} completed successfully"`);
             scriptParts.push(``);
         });
-        
+
         scriptParts.push(`echo "All stages completed successfully"`);
-        
+
         return scriptParts.join('\n');
+    }
+
+    // LOG CONFIG FUNCTIONS
+
+    async function loadLogConfigs() {
+        if (!project) return;
+        isLoadingLogs = true;
+        try {
+            const result = await fetchLogConfigs(project.id);
+            logConfigs = result.logConfigs || [];
+        } catch (error) {
+            addToast(`Failed to load log configs: ${error}`, "error");
+        } finally {
+            isLoadingLogs = false;
+        }
+    }
+
+    async function handleSaveLogConfig(event: CustomEvent<LogConfig>) {
+        const config = event.detail;
+        try {
+            if (config.id && config.id > 0) {
+                await updateLogConfig(project.id, config.id, config);
+                addToast("Log config updated successfully", "success");
+            } else {
+                await createLogConfig(project.id, config);
+                addToast("Log config created successfully", "success");
+            }
+            showLogForm = false;
+            selectedLogConfig = null;
+            await loadLogConfigs();
+        } catch (error) {
+            addToast(`Failed to save log config: ${error}`, "error");
+        }
+    }
+
+    async function handleDeleteLogConfig(logId: number) {
+        try {
+            await deleteLogConfig(project.id, logId);
+            addToast("Log config deleted successfully", "success");
+            await loadLogConfigs();
+        } catch (error) {
+            addToast(`Failed to delete log config: ${error}`, "error");
+        }
     }
 
 </script>
@@ -700,8 +763,37 @@
         </div>
     {/if}
 
-    
-
+    <!-- LOGS SECTION -->
+    {#if project}
+        <div class="my-6" in:fly={{ y: 20, duration: 300 }}>
+            <LogConfigList
+                logConfigs={logConfigs}
+                isLoading={isLoadingLogs}
+                on:viewLogs={(e) => {
+                    selectedLogConfig = e.detail;
+                    showLiveLogsViewer = true;
+                }}
+                on:editConfig={(e) => {
+                    selectedLogConfig = e.detail;
+                    showLogForm = true;
+                }}
+                on:deleteConfig={(e) => handleDeleteLogConfig(e.detail.id)}
+                on:createNew={() => {
+                    selectedLogConfig = null;
+                    showLogForm = true;
+                }}
+            />
+            <div class="mt-4 flex justify-end">
+                <button
+                    on:click={() => showLogPermissionManager = true}
+                    class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
+                >
+                    <Lock size={16} />
+                    Manage Permissions
+                </button>
+            </div>
+        </div>
+    {/if}
 
 </div>
 
@@ -786,4 +878,30 @@
             </div>
         </div>
     </div>
+{/if}
+
+<!-- LOG CONFIG FORM MODAL -->
+{#if showLogForm}
+    <LogConfigForm
+        config={selectedLogConfig}
+        on:save={handleSaveLogConfig}
+        on:cancel={() => { showLogForm = false; selectedLogConfig = null; }}
+    />
+{/if}
+
+<!-- LIVE LOGS VIEWER MODAL -->
+{#if showLiveLogsViewer && selectedLogConfig}
+    <LiveLogsViewer
+        logConfig={selectedLogConfig}
+        projectId={project.id}
+    />
+{/if}
+
+<!-- LOG PERMISSION MANAGER MODAL -->
+{#if showLogPermissionManager && project}
+    <LogPermissionManager
+        projectId={project.id}
+        logConfigs={logConfigs}
+        on:close={() => showLogPermissionManager = false}
+    />
 {/if}
