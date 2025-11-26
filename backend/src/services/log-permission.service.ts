@@ -163,7 +163,7 @@ export class LogPermissionService {
                 "configure_logs",
                 "delete_logs",
                 "manage_log_permissions"
-            ].includes(type)) as LogPermissionTypeEnum[];
+            ].includes(type)) as unknown as LogPermissionTypeEnum[];
     }
 
     /**
@@ -189,7 +189,7 @@ export class LogPermissionService {
                 "configure_logs",
                 "delete_logs",
                 "manage_log_permissions"
-            ].includes(type)) as LogPermissionTypeEnum[];
+            ].includes(type)) as unknown as LogPermissionTypeEnum[];
     }
 
     /**
