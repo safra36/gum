@@ -23,41 +23,39 @@
         try {
             eventSource = streamLogs(projectId, logConfig.id);
 
-            eventSource.addEventListener("connected", (event) => {
-                isConnected = true;
-                isLoading = false;
-                addToast("Connected to log stream", "success");
-            });
+            eventSource.addEventListener("message", (event) => {
+                try {
+                    const data = JSON.parse(event.data);
 
-            eventSource.addEventListener("stdout", (event) => {
-                if (isPaused) return;
-                const data = JSON.parse(event.data);
-                logs = [...logs, { type: "stdout", data: data.data, timestamp: data.timestamp }];
-                scrollToBottom();
-            });
-
-            eventSource.addEventListener("stderr", (event) => {
-                if (isPaused) return;
-                const data = JSON.parse(event.data);
-                logs = [...logs, { type: "stderr", data: data.data, timestamp: data.timestamp }];
-                scrollToBottom();
-            });
-
-            eventSource.addEventListener("close", (event) => {
-                const data = JSON.parse(event.data);
-                isConnected = false;
-                addToast(`Log streaming completed with exit code: ${data.result.exitCode}`, "info");
-                if (eventSource) {
-                    eventSource.close();
-                }
-            });
-
-            eventSource.addEventListener("error", (event) => {
-                const data = JSON.parse(event.data);
-                isConnected = false;
-                addToast(`Error: ${data.error}`, "error");
-                if (eventSource) {
-                    eventSource.close();
+                    if (data.type === "connected") {
+                        isConnected = true;
+                        isLoading = false;
+                        addToast("Connected to log stream", "success");
+                    } else if (data.type === "stdout") {
+                        if (!isPaused) {
+                            logs = [...logs, { type: "stdout", data: data.data, timestamp: data.timestamp }];
+                            scrollToBottom();
+                        }
+                    } else if (data.type === "stderr") {
+                        if (!isPaused) {
+                            logs = [...logs, { type: "stderr", data: data.data, timestamp: data.timestamp }];
+                            scrollToBottom();
+                        }
+                    } else if (data.type === "close") {
+                        isConnected = false;
+                        addToast(`Log streaming completed with exit code: ${data.result?.code || 'unknown'}`, "info");
+                        if (eventSource) {
+                            eventSource.close();
+                        }
+                    } else if (data.type === "error") {
+                        isConnected = false;
+                        addToast(`Error: ${data.error}`, "error");
+                        if (eventSource) {
+                            eventSource.close();
+                        }
+                    }
+                } catch (parseError) {
+                    console.error('Failed to parse SSE event:', parseError, event.data);
                 }
             });
 
