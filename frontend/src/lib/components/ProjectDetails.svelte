@@ -13,7 +13,7 @@
     import LogPermissionManager from "./LogPermissionManager.svelte";
     import { executeStaging, executeProject, fetchGitLog, fetchGitBranches, switchGitBranch, revertToCommit, switchToHead, setCronJob, getCronJob, removeCronJob, fetchLogConfigs, createLogConfig, updateLogConfig, deleteLogConfig, getLogPermissions } from "../services/api";
     import type { Project, ExecutionResult, GitLogEntry, LogConfig } from "$lib/types";
-    import { permissions } from '$lib/stores/user';
+    import { permissions, user } from '$lib/stores/user';
     import { toast as addToast } from "$lib/stores/toast";
     import { Loader2, FolderOpen, GitBranch, Play, Edit, GitBranchIcon, Check, GitCommit, PenTool, ArrowUp, RotateCcw, Clock, Info, Trash2, Terminal, Lock } from "lucide-svelte";
 
@@ -378,6 +378,12 @@
             if (defaultPerms && defaultPerms.permissions) {
                 userLogPermissions = defaultPerms.permissions;
                 userCanManageLogPermissions = defaultPerms.permissions.includes("manage_log_permissions");
+            }
+
+            // If user is admin and has no explicit permissions, grant all permissions
+            if ($user?.role === 'admin' && userLogPermissions.length === 0) {
+                userLogPermissions = ["view_logs", "configure_logs", "manage_log_permissions"];
+                userCanManageLogPermissions = true;
             }
         } catch (error) {
             addToast(`Failed to load log configs: ${error}`, "error");

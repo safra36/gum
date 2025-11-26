@@ -1364,8 +1364,9 @@ export class APIServer {
         });
 
         // Get log permissions for a project
-        this.app.get('/project/:projectId/log-permissions', this.authenticateRequest, this.checkAccess(AuthLevels.ManageUsers), async (req: Request, res: Response) => {
+        this.app.get('/project/:projectId/log-permissions', this.authenticateRequest, this.checkAccess(AuthLevels.ExecuteScript), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
             try {
+                const currentUser = req["user"] as any;
                 const projectId = parseInt(req.params.projectId);
                 const logPermissionService = require('../services/log-permission.service').LogPermissionService.getInstance();
 
@@ -1374,6 +1375,27 @@ export class APIServer {
                     where: { projectId },
                     relations: ['user', 'logConfig']
                 });
+
+                // If user is admin, ensure they have a project-level permission record with all permissions
+                if (currentUser?.role === 'admin') {
+                    const hasAdminRecord = permissions.some(p =>
+                        p.userId === currentUser.id && p.logConfigId === null
+                    );
+                    if (!hasAdminRecord) {
+                        // Add admin permission record for display purposes
+                        permissions.push({
+                            id: 0, // Placeholder ID
+                            userId: currentUser.id,
+                            projectId,
+                            logConfigId: null,
+                            permissions: ['view_logs', 'configure_logs', 'manage_log_permissions'],
+                            user: currentUser,
+                            logConfig: null,
+                            createdAt: new Date(),
+                            updatedAt: new Date()
+                        } as any);
+                    }
+                }
 
                 res.status(200).json({ permissions });
             } catch (error) {
