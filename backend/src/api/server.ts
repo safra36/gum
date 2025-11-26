@@ -1076,7 +1076,7 @@ export class APIServer {
         // LOG CONFIGURATION ENDPOINTS
 
         // Get all log configs for a project
-        this.app.get('/project/:projectId/logs', this.authenticateRequest, this.checkAccess(AuthLevels.ViewProject), this.checkProjectAccess(ProjectAccessLevel.VIEW), async (req: Request, res: Response) => {
+        this.app.get('/project/:projectId/logs', this.authenticateRequest, this.checkAccess(AuthLevels.ExecuteScript), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
             try {
                 const projectId = parseInt(req.params.projectId);
                 const logConfigService = require('../services/log-config.service').LogConfigService.getInstance();
