@@ -97,7 +97,8 @@ export async function fetchProjectDetails(id: number): Promise<Project> {
     if (!response.ok) {
         throw new Error('Failed to fetch project details');
     }
-    return response.json();
+    const data = await response.json();
+    return data.project;
 }
 
 export async function executeStaging(route: string): Promise<{ success: boolean, message: string, project: string, results: ExecutionResult[] }> {
@@ -221,6 +222,9 @@ export async function switchGitBranch(projectId: number, branch: string): Promis
         body: JSON.stringify({ branch }),
     });
     if (!response.ok) {
+        if (response.status === 403) {
+            throw new Error('Permission denied: You do not have access to perform this action on this project');
+        }
         throw new Error('Failed to switch git branch');
     }
 }
@@ -235,6 +239,9 @@ export async function revertToCommit(projectId: number, commitHash: string): Pro
         body: JSON.stringify({ commitHash }),
     });
     if (!response.ok) {
+        if (response.status === 403) {
+            throw new Error('Permission denied: You do not have access to perform this action on this project');
+        }
         throw new Error('Failed to revert to commit');
     }
 }
@@ -265,6 +272,9 @@ export async function setCronJob(projectId: number, cronExpression: string): Pro
     });
 
     if (!response.ok) {
+        if (response.status === 403) {
+            throw new Error('Permission denied: You do not have access to perform this action on this project');
+        }
         throw new Error('Failed to set cron job');
     }
 }
@@ -294,6 +304,9 @@ export async function removeCronJob(projectId: number): Promise<void> {
     });
 
     if (!response.ok) {
+        if (response.status === 403) {
+            throw new Error('Permission denied: You do not have access to perform this action on this project');
+        }
         throw new Error('Failed to remove cron job');
     }
 }
