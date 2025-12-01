@@ -1,6 +1,6 @@
 import { AppDataSource } from "../data-source";
 import { Permission, PermissionType } from "../entity/Permission";
-import { User } from "../entity/User";
+import { User, UserRole } from "../entity/User";
 import { Project } from "../entity/Project";
 import { LogConfig } from "../entity/LogConfig";
 
@@ -110,7 +110,7 @@ export class LogPermissionService {
             where: { id: userId }
         });
         if (!user) return false;
-        if (user.role === "admin") return true;
+        if (user.role === UserRole.ADMIN) return true;
 
         // Check log-specific permission
         let permission = await AppDataSource.getRepository(Permission).findOne({

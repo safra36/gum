@@ -69,6 +69,25 @@ export class AuthService {
             throw new Error("User not found");
         }
 
+        // Prevent admin demotion
+        if (userData.role && user.role === UserRole.ADMIN && userData.role !== UserRole.ADMIN) {
+            // Check if this is the last admin
+            const adminCount = await this.userRepository.count({ where: { role: UserRole.ADMIN } });
+            if (adminCount <= 1) {
+                throw new Error("Cannot demote the last admin user");
+            }
+        }
+
+        // Prevent deactivating the last admin
+        if (userData.isActive === false && user.role === UserRole.ADMIN && user.isActive === true) {
+            const activeAdminCount = await this.userRepository.count({
+                where: { role: UserRole.ADMIN, isActive: true }
+            });
+            if (activeAdminCount <= 1) {
+                throw new Error("Cannot deactivate the last active admin user");
+            }
+        }
+
         if (userData.username) user.username = userData.username;
         if (userData.password) user.password = await bcrypt.hash(userData.password, 10);
         if (userData.email !== undefined) user.email = userData.email;

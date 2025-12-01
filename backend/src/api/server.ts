@@ -794,7 +794,7 @@ export class APIServer {
             }
         });
 
-        this.app.post('/project/:id/switch-branch', this.authenticateRequest, this.checkAccess(AuthLevels.SwitchBranch), async (req: Request, res: Response) => {
+        this.app.post('/project/:id/switch-branch', this.authenticateRequest, this.checkAccess(AuthLevels.SwitchBranch), this.checkProjectAccess(ProjectAccessLevel.VIEW), async (req: Request, res: Response) => {
 
 
 
@@ -931,7 +931,7 @@ export class APIServer {
             }
         });
 
-        this.app.post('/project/:id/revert-commit', this.authenticateRequest, this.checkAccess(AuthLevels.RevertCommit), async (req: Request, res: Response) => {
+        this.app.post('/project/:id/revert-commit', this.authenticateRequest, this.checkAccess(AuthLevels.RevertCommit), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
             try {
                 const projectId = parseInt(req.params.id);
                 const { commitHash } = req.body;
@@ -987,7 +987,7 @@ export class APIServer {
 
 
 
-        this.app.post('/project/:id/cron', this.authenticateRequest, this.checkAccess(AuthLevels.SetCron), async (req: Request, res: Response) => {
+        this.app.post('/project/:id/cron', this.authenticateRequest, this.checkAccess(AuthLevels.SetCron), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
             try {
                 const projectId = parseInt(req.params.id);
                 const { cronExpression } = req.body;
@@ -1041,7 +1041,7 @@ export class APIServer {
 
 
 
-        this.app.delete('/project/:id/cron', this.authenticateRequest, this.checkAccess(AuthLevels.SetCron), async (req: Request, res: Response) => {
+        this.app.delete('/project/:id/cron', this.authenticateRequest, this.checkAccess(AuthLevels.SetCron), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
             try {
                 const projectId = parseInt(req.params.id);
 
