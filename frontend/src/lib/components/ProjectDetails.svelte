@@ -798,7 +798,7 @@
     {/if}
 
     <!-- LOGS SECTION -->
-    {#if project && logConfigs.length > 0}
+    {#if project}
         <div class="my-6" in:fly={{ y: 20, duration: 300 }}>
             <LogConfigList
                 logConfigs={logConfigs}
