@@ -43,16 +43,18 @@ export class AuthService {
         email?: string;
         role?: UserRole;
         permissions?: string[];
+        isMasterAdmin?: boolean;
     }): Promise<User> {
         const hashedPassword = await bcrypt.hash(userData.password, 10);
-        
+
         const user = new User();
         user.username = userData.username;
         user.password = hashedPassword;
         user.email = userData.email || null;
         user.role = userData.role || UserRole.USER;
         user.permissions = userData.permissions || [];
-        
+        user.isMasterAdmin = userData.isMasterAdmin || false;
+
         return await this.userRepository.save(user);
     }
 
@@ -67,6 +69,11 @@ export class AuthService {
         const user = await this.userRepository.findOne({ where: { id: userId } });
         if (!user) {
             throw new Error("User not found");
+        }
+
+        // Prevent any changes to master admin
+        if (user.isMasterAdmin) {
+            throw new Error("Cannot modify master admin user. Contact system administrator for assistance.");
         }
 
         // Prevent admin demotion
@@ -104,6 +111,11 @@ export class AuthService {
             const user = await this.userRepository.findOne({ where: { id: userId } });
             if (!user) {
                 throw new Error("User not found");
+            }
+
+            // Prevent deletion of master admin
+            if (user.isMasterAdmin) {
+                throw new Error("Cannot delete master admin user. Contact system administrator for assistance.");
             }
 
             // Prevent deletion of the last admin user
@@ -369,9 +381,15 @@ export class AuthService {
                 password: "admin123",
                 email: "admin@gum.local",
                 role: UserRole.ADMIN,
-                permissions: Object.values(AuthLevels)
+                permissions: Object.values(AuthLevels),
+                isMasterAdmin: true
             });
-            console.log("Default admin user created: admin/admin123");
+            console.log("Default admin user created: admin/admin123 (Master Admin)");
+        } else if (!existingAdmin.isMasterAdmin) {
+            // Mark the first/oldest admin as master admin if none exists
+            existingAdmin.isMasterAdmin = true;
+            await this.userRepository.save(existingAdmin);
+            console.log(`Admin user ${existingAdmin.username} marked as Master Admin`);
         }
     }
 }

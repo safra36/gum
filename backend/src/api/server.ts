@@ -758,17 +758,41 @@ export class APIServer {
                 };
                 const createdProject = await this.projectService.createProject(projectData);
                 const projectDTO = this.projectToDTO(createdProject);
-                
+
                 // Reset routes after project creation
                 const newConfig = await this.generateNewConfig();
                 this.resetRoutes(newConfig);
-                
+
                 res.status(201).json({ message: 'Project created successfully', project: projectDTO });
             } catch (error) {
                 res.status(500).json({ error: 'Failed to create project', details: error.message });
             }
         });
 
+        // Get individual project with permissions
+        this.app.get('/project/:id', this.authenticateRequest, this.checkAccess(AuthLevels.ViewProject), this.checkProjectAccess(ProjectAccessLevel.VIEW), async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+                const user = req["user"] as any;
+
+                const project = await this.projectService.getProjectById(projectId);
+                if (!project) {
+                    return res.status(404).json({ error: "Project not found" });
+                }
+
+                const projectDTO = this.projectToDTO(project);
+
+                // Get user's permission for this project
+                const permission = await this.projectPermissionService.getUserProjectPermission(user.id, projectId);
+
+                res.status(200).json({
+                    project: projectDTO,
+                    permission: permission || { accessLevel: 'none' }
+                });
+            } catch (error) {
+                res.status(500).json({ error: 'Failed to fetch project', details: error.message });
+            }
+        });
 
         this.app.get('/project/:id/branches', this.authenticateRequest, this.checkAccess(AuthLevels.SwitchBranch), this.checkProjectAccess(ProjectAccessLevel.VIEW), async (req: Request, res: Response) => {
 

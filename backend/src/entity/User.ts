@@ -32,6 +32,9 @@ export class User {
     @Column({ default: true })
     isActive: boolean
 
+    @Column({ default: false })
+    isMasterAdmin: boolean
+
     @Column("simple-array", { default: "" })
     permissions: string[]
 

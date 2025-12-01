@@ -140,6 +140,16 @@ export class ProjectPermissionService {
     }
 
     /**
+     * Get a single user's permission for a specific project
+     */
+    public async getUserProjectPermission(userId: number, projectId: number): Promise<ProjectPermission | null> {
+        return await this.projectPermissionRepository.findOne({
+            where: { userId, projectId },
+            relations: ['project']
+        });
+    }
+
+    /**
      * Get all users and their project permissions (for admin management)
      */
     public async getAllProjectPermissions(): Promise<ProjectPermission[]> {
