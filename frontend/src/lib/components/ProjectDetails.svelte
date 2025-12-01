@@ -373,8 +373,8 @@
             userLogPermissions = [];
             userCanManageLogPermissions = false;
 
-            // Find permissions for current user that apply to all logs (no logConfigId = null)
-            const defaultPerms = userPermissions.find((p: any) => p.logConfigId === null);
+            // Find permissions for CURRENT user that apply to all logs (no logConfigId = null)
+            const defaultPerms = userPermissions.find((p: any) => p.userId === $user?.id && p.logConfigId === null);
             if (defaultPerms && defaultPerms.permissions) {
                 userLogPermissions = defaultPerms.permissions;
                 userCanManageLogPermissions = defaultPerms.permissions.includes("manage_log_permissions");
