@@ -90,7 +90,7 @@
                         >
                             <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{config.name}</td>
                             <td class="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs truncate">
-                                {#if isAdmin || hasPermission("view_logs") || hasPermission("configure_logs")}
+                                {#if config.command}
                                     {config.command}
                                 {:else}
                                     <span class="text-gray-500 italic">••••••••••••••••</span>

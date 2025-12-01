@@ -1103,10 +1103,60 @@ export class APIServer {
         this.app.get('/project/:projectId/logs', this.authenticateRequest, this.checkAccess(AuthLevels.ExecuteScript), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
             try {
                 const projectId = parseInt(req.params.projectId);
+                const currentUser = req["user"] as any;
                 const logConfigService = require('../services/log-config.service').LogConfigService.getInstance();
+                const logPermissionService = require('../services/log-permission.service').LogPermissionService.getInstance();
 
                 const logConfigs = await logConfigService.getLogConfigsByProject(projectId);
-                res.status(200).json({ logConfigs });
+
+                // Filter command field based on user permissions
+                const filteredLogConfigs = await Promise.all(logConfigs.map(async (config: any) => {
+                    // Admins always see the full config
+                    if (currentUser.role === 'admin') {
+                        return config;
+                    }
+
+                    // Check user's permissions for this specific log config
+                    const userPermissions = await logPermissionService.getUserLogPermissions(
+                        currentUser.id,
+                        projectId,
+                        config.id
+                    );
+
+                    // If no specific permission, check project-level default
+                    if (userPermissions.length === 0) {
+                        const defaultPermissions = await logPermissionService.getProjectDefaultPermissions(
+                            currentUser.id,
+                            projectId
+                        );
+
+                        // Only view_logs permission means hide command
+                        if (defaultPermissions.length === 1 && defaultPermissions[0] === 'view_logs') {
+                            const { command, ...configWithoutCommand } = config;
+                            return configWithoutCommand;
+                        }
+
+                        // No permissions or has additional permissions, show full config
+                        if (defaultPermissions.length > 0) {
+                            return config;
+                        }
+
+                        // No permissions at all, still hide command to be safe
+                        const { command, ...configWithoutCommand } = config;
+                        return configWithoutCommand;
+                    }
+
+                    // Only view_logs permission means hide command
+                    if (userPermissions.length === 1 && userPermissions[0] === 'view_logs') {
+                        const { command, ...configWithoutCommand } = config;
+                        return configWithoutCommand;
+                    }
+
+                    // Has other permissions (configure, delete), show full config
+                    return config;
+                }));
+
+                res.status(200).json({ logConfigs: filteredLogConfigs });
             } catch (error) {
                 console.error('Error fetching log configs:', error);
                 res.status(500).json({
