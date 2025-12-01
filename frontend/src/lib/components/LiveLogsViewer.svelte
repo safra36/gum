@@ -22,26 +22,22 @@
     let queuedCount = 0;
     let totalReceived = 0;
 
-    const LOG_INTERVAL = 5; // Add one log every 5ms
+    const LOG_BATCH_SIZE = 5; // Process 5 logs at a time
+    const LOG_INTERVAL = 50; // Every 50ms
 
-    function processOneLog() {
+    function processBatch() {
         if (logQueue.length === 0 || isPaused) return;
 
-        const log = logQueue.shift();
-        if (log) {
-            logs = [...logs, log];
-            queuedCount = logQueue.length;
-
-            // Scroll to bottom after log is added
-            if (scrollContainer && !isPaused) {
-                scrollContainer.scrollTop = scrollContainer.scrollHeight;
-            }
-        }
+        // Process up to LOG_BATCH_SIZE logs
+        const batchSize = Math.min(LOG_BATCH_SIZE, logQueue.length);
+        const batch = logQueue.splice(0, batchSize);
+        logs = [...logs, ...batch];
+        queuedCount = logQueue.length;
     }
 
     function startBatchProcessor() {
         if (batchProcessorInterval === null) {
-            batchProcessorInterval = window.setInterval(processOneLog, LOG_INTERVAL);
+            batchProcessorInterval = window.setInterval(processBatch, LOG_INTERVAL);
         }
     }
 
