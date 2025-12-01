@@ -8,6 +8,7 @@
     export let isLoading: boolean = false;
     export let userLogPermissions: LogPermissionType[] = [];
     export let canManagePermissions: boolean = false;
+    export let isAdmin: boolean = false;
 
     const dispatch = createEventDispatcher<{
         viewLogs: LogConfig;
@@ -27,13 +28,13 @@
     }
 
     function handleEditConfig(config: LogConfig) {
-        if (hasPermission("configure_logs")) {
+        if (isAdmin || hasPermission("configure_logs")) {
             dispatch("editConfig", config);
         }
     }
 
     function handleDeleteConfig(config: LogConfig) {
-        if (hasPermission("configure_logs")) {
+        if (isAdmin || hasPermission("delete_logs")) {
             if (confirm(`Are you sure you want to delete log config "${config.name}"?`)) {
                 dispatch("deleteConfig", config);
             }
@@ -41,7 +42,7 @@
     }
 
     function handleCreateNew() {
-        if (hasPermission("configure_logs")) {
+        if (isAdmin || hasPermission("configure_logs")) {
             dispatch("createNew");
         }
     }
@@ -50,7 +51,7 @@
 <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-6">
     <div class="flex items-center justify-between mb-6">
         <h2 class="text-2xl font-bold text-gray-800 dark:text-white">Log Configurations</h2>
-        {#if hasPermission("configure_logs")}
+        {#if isAdmin || hasPermission("configure_logs")}
             <button
                 on:click={handleCreateNew}
                 class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
@@ -89,7 +90,7 @@
                         >
                             <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{config.name}</td>
                             <td class="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs truncate">
-                                {#if hasPermission("view_logs") || hasPermission("configure_logs")}
+                                {#if isAdmin || hasPermission("view_logs") || hasPermission("configure_logs")}
                                     {config.command}
                                 {:else}
                                     <span class="text-gray-500 italic">••••••••••••••••</span>
@@ -121,7 +122,7 @@
                                         </div>
                                     {/if}
 
-                                    {#if hasPermission("configure_logs")}
+                                    {#if isAdmin || hasPermission("configure_logs")}
                                         <button
                                             on:click={() => handleEditConfig(config)}
                                             class="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
@@ -131,7 +132,7 @@
                                         </button>
                                     {/if}
 
-                                    {#if hasPermission("delete_logs")}
+                                    {#if isAdmin || hasPermission("delete_logs")}
                                         <button
                                             on:click={() => handleDeleteConfig(config)}
                                             class="p-2 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
@@ -139,7 +140,7 @@
                                         >
                                             <Trash2 size={16} />
                                         </button>
-                                    {:else if !hasPermission("configure_logs")}
+                                    {:else if !isAdmin && !hasPermission("configure_logs") && !hasPermission("delete_logs")}
                                         <div
                                             class="p-2 text-gray-400 cursor-not-allowed"
                                             title="No permission to configure or delete logs"

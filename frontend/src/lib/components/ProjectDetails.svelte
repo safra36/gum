@@ -805,6 +805,7 @@
                 isLoading={isLoadingLogs}
                 userLogPermissions={userLogPermissions}
                 canManagePermissions={userCanManageLogPermissions}
+                isAdmin={$user?.role === 'admin'}
                 on:viewLogs={(e) => {
                     selectedLogConfig = e.detail;
                     showLiveLogsViewer = true;
