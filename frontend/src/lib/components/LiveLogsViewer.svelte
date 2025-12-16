@@ -21,18 +21,40 @@
     let batchProcessorInterval: number | null = null;
     let queuedCount = 0;
     let totalReceived = 0;
+    let autoScroll = true;
 
-    const LOG_BATCH_SIZE = 5; // Process 5 logs at a time
-    const LOG_INTERVAL = 50; // Every 50ms
+    const LOG_BATCH_SIZE = 50; // Process 50 logs at a time
+    const LOG_INTERVAL = 10; // Every 10ms
 
     function processBatch() {
         if (logQueue.length === 0 || isPaused) return;
 
-        // Process up to LOG_BATCH_SIZE logs
-        const batchSize = Math.min(LOG_BATCH_SIZE, logQueue.length);
+        // Dynamically adjust batch size based on queue length
+        // If there's a large queue, process more aggressively
+        let batchSize = LOG_BATCH_SIZE;
+        if (logQueue.length > 500) {
+            batchSize = Math.min(200, Math.floor(logQueue.length / 3));
+        } else if (logQueue.length > 100) {
+            batchSize = Math.min(100, Math.floor(logQueue.length / 2));
+        }
+
         const batch = logQueue.splice(0, batchSize);
         logs = [...logs, ...batch];
         queuedCount = logQueue.length;
+
+        // Auto-scroll to bottom if enabled
+        if (autoScroll && scrollContainer) {
+            tick().then(() => {
+                scrollContainer.scrollTop = scrollContainer.scrollHeight;
+            });
+        }
+    }
+
+    function handleContainerScroll() {
+        if (!scrollContainer) return;
+        // Disable auto-scroll if user scrolls up
+        const isAtBottom = scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 10;
+        autoScroll = isAtBottom;
     }
 
     function startBatchProcessor() {
@@ -251,6 +273,7 @@
         <!-- Logs Container -->
         <div
             bind:this={scrollContainer}
+            on:scroll={handleContainerScroll}
             class="flex-1 overflow-y-auto bg-gray-900 font-mono text-xs leading-relaxed"
         >
             {#if errorMessage}
@@ -296,7 +319,7 @@
                     {:else if isConnected}
                         <span class="font-medium text-green-600 dark:text-green-400">● Streaming</span>
                         <span class="ml-2 text-gray-600 dark:text-gray-400">—</span>
-                        <span class="ml-2">{logs.length} lines displayed</span>
+                        <span class="ml-2">{logs.length} displayed / {totalReceived} total</span>
                         {#if queuedCount > 0}
                             <span class="ml-3 text-amber-600 dark:text-amber-400">⚡ {queuedCount} in queue</span>
                         {/if}

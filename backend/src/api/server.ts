@@ -1320,6 +1320,10 @@ export class APIServer {
             const { projectId, logId } = req.params;
             const token = req.query.token as string;
 
+            // Timeout after 30 minutes (1800000ms) for long-running commands like tail -f
+            const MAX_STREAM_TIMEOUT = 30 * 60 * 1000;
+            let streamTimeout: NodeJS.Timeout | null = null;
+
             try {
                 if (!token) {
                     return res.status(401).json({ error: "No authentication token provided" });
@@ -1381,8 +1385,42 @@ export class APIServer {
                 // Execute the log command with real-time streaming
                 const logStream = executorService.executeLogStream(logConfig.command, workingDir);
 
+                // Centralized cleanup function
+                const cleanup = () => {
+                    console.log('[LogStream] Performing cleanup');
+
+                    // Clear timeout if it exists
+                    if (streamTimeout) {
+                        clearTimeout(streamTimeout);
+                        streamTimeout = null;
+                    }
+
+                    try {
+                        const childProcess = (logStream as any).childProcess;
+                        if (childProcess && !childProcess.killed) {
+                            console.log('[LogStream] Killing child process with SIGTERM');
+                            childProcess.kill('SIGTERM');
+
+                            // If process doesn't die after 5 seconds, use SIGKILL
+                            setTimeout(() => {
+                                if (childProcess && !childProcess.killed) {
+                                    console.log('[LogStream] Process still alive, using SIGKILL');
+                                    childProcess.kill('SIGKILL');
+                                }
+                            }, 5000);
+                        }
+                    } catch (error) {
+                        console.error('[LogStream] Error during cleanup:', error);
+                    }
+
+                    if (!res.writableEnded) {
+                        res.end();
+                    }
+                };
+
                 // Handle stdout events
                 logStream.on('stdout', (data: string) => {
+                    if (res.writableEnded) return;
                     // Send each line as it comes
                     data.split('\n').forEach(line => {
                         if (line.trim()) {
@@ -1393,6 +1431,7 @@ export class APIServer {
 
                 // Handle stderr events
                 logStream.on('stderr', (data: string) => {
+                    if (res.writableEnded) return;
                     data.split('\n').forEach(line => {
                         if (line.trim()) {
                             res.write(`data: ${JSON.stringify({ type: 'stderr', data: line, timestamp: Date.now() })}\n\n`);
@@ -1402,27 +1441,43 @@ export class APIServer {
 
                 // Handle completion
                 logStream.on('close', (result: any) => {
-                    console.log('[LogStream] Connection closed:', result);
-                    res.write(`data: ${JSON.stringify({ type: 'close', result, timestamp: Date.now() })}\n\n`);
-                    res.end();
+                    console.log('[LogStream] Process closed:', result);
+                    if (!res.writableEnded) {
+                        res.write(`data: ${JSON.stringify({ type: 'close', result, timestamp: Date.now() })}\n\n`);
+                    }
+                    cleanup();
                 });
 
                 // Handle errors
                 logStream.on('error', (error: string) => {
                     console.error('[LogStream] Stream error:', error);
-                    res.write(`data: ${JSON.stringify({ type: 'error', error, timestamp: Date.now() })}\n\n`);
-                    res.end();
+                    if (!res.writableEnded) {
+                        res.write(`data: ${JSON.stringify({ type: 'error', error, timestamp: Date.now() })}\n\n`);
+                    }
+                    cleanup();
                 });
 
                 // Handle client disconnect
-                res.on('close', () => {
-                    console.log('[LogStream] Client disconnected');
-                    // Kill the child process if it's still running
-                    const childProcess = (logStream as any).childProcess;
-                    if (childProcess) {
-                        childProcess.kill();
+                req.on('close', cleanup);
+                req.on('aborted', cleanup);
+
+                // Set stream timeout to prevent indefinite processes (tail -f)
+                streamTimeout = setTimeout(() => {
+                    console.log(`[LogStream] Stream timeout reached (${MAX_STREAM_TIMEOUT}ms)`);
+                    if (!res.writableEnded) {
+                        res.write(`data: ${JSON.stringify({
+                            type: 'info',
+                            data: `Stream timeout: Maximum duration of ${MAX_STREAM_TIMEOUT / 1000 / 60} minutes reached. Closing connection.`,
+                            timestamp: Date.now()
+                        })}\n\n`);
+                        res.write(`data: ${JSON.stringify({
+                            type: 'close',
+                            result: { code: 'TIMEOUT', message: 'Stream exceeded maximum duration' },
+                            timestamp: Date.now()
+                        })}\n\n`);
                     }
-                });
+                    cleanup();
+                }, MAX_STREAM_TIMEOUT);
 
             } catch (error) {
                 console.error('Error in log stream:', error);
