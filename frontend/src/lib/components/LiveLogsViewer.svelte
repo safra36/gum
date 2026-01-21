@@ -22,6 +22,10 @@
     let queuedCount = 0;
     let totalReceived = 0;
     let autoScroll = true;
+    let connectionHealthCheck: number | null = null;
+    let lastMessageTime = 0;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 3;
 
     const LOG_BATCH_SIZE = 50; // Process 50 logs at a time
     const LOG_INTERVAL = 10; // Every 10ms
@@ -29,25 +33,46 @@
     function processBatch() {
         if (logQueue.length === 0 || isPaused) return;
 
-        // Dynamically adjust batch size based on queue length
-        // If there's a large queue, process more aggressively
-        let batchSize = LOG_BATCH_SIZE;
-        if (logQueue.length > 500) {
-            batchSize = Math.min(200, Math.floor(logQueue.length / 3));
-        } else if (logQueue.length > 100) {
-            batchSize = Math.min(100, Math.floor(logQueue.length / 2));
+        // Performance-based batch processing with frame budget awareness
+        const startTime = performance.now();
+        const maxProcessingTime = 8; // Target <10ms per frame for smooth UI
+        
+        let processedCount = 0;
+        const maxBatchSize = Math.min(200, logQueue.length);
+        
+        // Process logs in a performance-aware loop
+        while (logQueue.length > 0 && processedCount < maxBatchSize) {
+            const log = logQueue.shift();
+            if (log) {
+                // Use immutable update for better Svelte reactivity
+                logs = [...logs, log];
+                processedCount++;
+                
+                // Check if we're approaching frame budget
+                if (performance.now() - startTime > maxProcessingTime) {
+                    break;
+                }
+            }
         }
-
-        const batch = logQueue.splice(0, batchSize);
-        logs = [...logs, ...batch];
+        
         queuedCount = logQueue.length;
-
-        // Auto-scroll to bottom if enabled
-        if (autoScroll && scrollContainer) {
-            tick().then(() => {
-                scrollContainer.scrollTop = scrollContainer.scrollHeight;
-            });
+        
+        // Schedule next batch with adaptive timing based on queue size
+        if (logQueue.length > 0 && !isPaused) {
+            // Adaptive timing: faster for large queues, slower for small ones
+            const nextInterval = Math.min(50, Math.max(10, 1000 / (logQueue.length / 5)));
+            setTimeout(processBatch, nextInterval);
+        } else {
+            // Process remaining logs immediately if queue is small
+            if (logQueue.length > 0) {
+                logs = [...logs, ...logQueue];
+                logQueue = [];
+                queuedCount = 0;
+            }
         }
+        
+        // Optimize auto-scroll after processing
+        optimizeAutoScroll();
     }
 
     function handleContainerScroll() {
@@ -55,6 +80,73 @@
         // Disable auto-scroll if user scrolls up
         const isAtBottom = scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 10;
         autoScroll = isAtBottom;
+    }
+
+    function optimizeAutoScroll() {
+        if (autoScroll && scrollContainer) {
+            // Use requestAnimationFrame for smoother scrolling
+            requestAnimationFrame(() => {
+                try {
+                    scrollContainer.scrollTop = scrollContainer.scrollHeight;
+                } catch (error) {
+                    // Handle potential DOM exceptions
+                    console.warn('Auto-scroll failed:', error);
+                }
+            });
+        }
+    }
+
+    function setupConnectionMonitoring() {
+        // Clear any existing health check
+        if (connectionHealthCheck) {
+            clearInterval(connectionHealthCheck);
+        }
+        
+        connectionHealthCheck = window.setInterval(() => {
+            if (eventSource && eventSource.readyState === EventSource.OPEN) {
+                // Connection is healthy, update last message time
+                if (Date.now() - lastMessageTime > 30000) {
+                    console.warn('No log messages received for 30s, checking connection...');
+                    // Connection is open but no messages, this might indicate a stalled stream
+                    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                        attemptReconnect();
+                    }
+                }
+            } else if (isConnected && eventSource?.readyState !== EventSource.CONNECTING) {
+                // Connection dropped, attempt to reconnect
+                if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    attemptReconnect();
+                }
+            }
+        }, 15000); // Check every 15 seconds
+    }
+
+    function attemptReconnect() {
+        reconnectAttempts++;
+        console.log(`Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+        addToast(`Connection issue detected, reconnecting... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`, "warning");
+        
+        // Close existing connection
+        if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+        }
+        
+        // Try to reconnect after a delay
+        setTimeout(() => {
+            if (!isPaused && isConnected) {
+                console.log('Reconnecting to log stream...');
+                connectToLogs();
+            }
+        }, 2000);
+    }
+
+    function cleanupConnectionMonitoring() {
+        if (connectionHealthCheck) {
+            clearInterval(connectionHealthCheck);
+            connectionHealthCheck = null;
+        }
+        reconnectAttempts = 0;
     }
 
     function startBatchProcessor() {
@@ -78,6 +170,8 @@
         logQueue = [];
         queuedCount = 0;
         totalReceived = 0;
+        reconnectAttempts = 0;
+        lastMessageTime = Date.now();
         startBatchProcessor();
 
         try {
@@ -86,12 +180,15 @@
             eventSource.addEventListener("message", (event) => {
                 try {
                     const data = JSON.parse(event.data);
+                    lastMessageTime = Date.now(); // Update last message time
+                    reconnectAttempts = 0; // Reset reconnect counter on successful message
 
                     if (data.type === "connected") {
                         isConnected = true;
                         isLoading = false;
                         errorMessage = null;
                         addToast("Connected to log stream", "success");
+                        setupConnectionMonitoring(); // Start health monitoring
                     } else if (data.type === "stdout") {
                         totalReceived++;
                         logQueue.push({ type: "stdout", data: data.data, timestamp: data.timestamp });
@@ -102,6 +199,7 @@
                         queuedCount = logQueue.length;
                     } else if (data.type === "close") {
                         isConnected = false;
+                        cleanupConnectionMonitoring();
                         // Process remaining logs
                         if (logQueue.length > 0) {
                             logs = [...logs, ...logQueue];
@@ -116,6 +214,7 @@
                     } else if (data.type === "error") {
                         isConnected = false;
                         isLoading = false;
+                        cleanupConnectionMonitoring();
                         errorMessage = data.error;
                         stopBatchProcessor();
                         addToast(`Error: ${data.error}`, "error");
@@ -132,14 +231,21 @@
                 isConnected = false;
                 isLoading = false;
                 stopBatchProcessor();
+                cleanupConnectionMonitoring();
                 if (eventSource?.readyState === EventSource.CLOSED) {
                     errorMessage = "Connection closed by server. You may not have permission to view these logs.";
                     addToast(errorMessage, "error");
+                } else {
+                    // Connection error, attempt to reconnect
+                    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                        attemptReconnect();
+                    }
                 }
             };
         } catch (error) {
             isLoading = false;
             stopBatchProcessor();
+            cleanupConnectionMonitoring();
             errorMessage = `Failed to connect to logs: ${error}`;
             addToast(errorMessage, "error");
         }
@@ -178,6 +284,7 @@
             eventSource = null;
         }
         stopBatchProcessor();
+        cleanupConnectionMonitoring();
         // Dispatch close event to parent component
         dispatch("close");
     }
@@ -190,6 +297,7 @@
             eventSource = null;
         }
         stopBatchProcessor();
+        cleanupConnectionMonitoring();
     });
 
     // Connect on mount
