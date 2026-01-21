@@ -669,6 +669,209 @@ export class ExecutorService {
         }
     }
 
+    async createGitBranch(repoPath: string, branchName: string, sourceBranch: string = 'HEAD'): Promise<void> {
+        const script = `
+            cd "$1"
+            git checkout "$3"
+            git pull origin "$3"
+            git checkout -b "$2"
+            git push origin "$2"
+        `;
+
+        try {
+            const result = await this.executeScript(script, [repoPath, branchName, sourceBranch]);
+
+            if (result.exitCode !== 0) {
+                throw new Error(`Failed to create branch: ${result.stderr}`);
+            }
+        } catch (error) {
+            console.error('Error creating git branch:', error);
+            throw error;
+        }
+    }
+
+    async deleteGitBranch(repoPath: string, branchName: string, force: boolean = false): Promise<void> {
+        // Prevent deletion of protected branches
+        if (branchName === 'main' || branchName === 'master' || branchName === 'develop') {
+            throw new Error(`Cannot delete protected branch: ${branchName}`);
+        }
+
+        const script = `
+            cd "$1"
+            git checkout main
+            git pull origin main
+            git branch -D "$2"
+            git push origin --delete "$2"
+        `;
+
+        try {
+            const result = await this.executeScript(script, [repoPath, branchName]);
+
+            if (result.exitCode !== 0) {
+                throw new Error(`Failed to delete branch: ${result.stderr}`);
+            }
+        } catch (error) {
+            console.error('Error deleting git branch:', error);
+            throw error;
+        }
+    }
+
+    async mergeGitBranch(repoPath: string, sourceBranch: string, targetBranch: string): Promise<void> {
+        const script = `
+            cd "$1"
+            git checkout "$3"
+            git pull origin "$3"
+            git merge "$2" --no-ff -m "Merge branch $2 into $3"
+            git push origin "$3"
+        `;
+
+        try {
+            const result = await this.executeScript(script, [repoPath, sourceBranch, targetBranch]);
+
+            if (result.exitCode !== 0) {
+                throw new Error(`Failed to merge branch: ${result.stderr}`);
+            }
+        } catch (error) {
+            console.error('Error merging git branch:', error);
+            throw error;
+        }
+    }
+
+    async gitPush(repoPath: string, branchName: string): Promise<void> {
+        const script = `
+            cd "$1"
+            git checkout "$2"
+            git push origin "$2"
+        `;
+
+        try {
+            const result = await this.executeScript(script, [repoPath, branchName]);
+
+            if (result.exitCode !== 0) {
+                throw new Error(`Failed to push changes: ${result.stderr}`);
+            }
+        } catch (error) {
+            console.error('Error pushing changes:', error);
+            throw error;
+        }
+    }
+
+    async gitPull(repoPath: string, branchName: string): Promise<void> {
+        const script = `
+            cd "$1"
+            git checkout "$2"
+            git pull origin "$2"
+        `;
+
+        try {
+            const result = await this.executeScript(script, [repoPath, branchName]);
+
+            if (result.exitCode !== 0) {
+                throw new Error(`Failed to pull changes: ${result.stderr}`);
+            }
+        } catch (error) {
+            console.error('Error pulling changes:', error);
+            throw error;
+        }
+    }
+
+    async createGitTag(repoPath: string, tagName: string, commitHash: string = 'HEAD'): Promise<void> {
+        const script = `
+            cd "$1"
+            git tag -a "$2" "$3" -m "Created tag $2"
+            git push origin "$2"
+        `;
+
+        try {
+            const result = await this.executeScript(script, [repoPath, tagName, commitHash]);
+
+            if (result.exitCode !== 0) {
+                throw new Error(`Failed to create tag: ${result.stderr}`);
+            }
+        } catch (error) {
+            console.error('Error creating git tag:', error);
+            throw error;
+        }
+    }
+
+    async deleteGitTag(repoPath: string, tagName: string): Promise<void> {
+        const script = `
+            cd "$1"
+            git tag -d "$2"
+            git push origin --delete "$2"
+        `;
+
+        try {
+            const result = await this.executeScript(script, [repoPath, tagName]);
+
+            if (result.exitCode !== 0) {
+                throw new Error(`Failed to delete tag: ${result.stderr}`);
+            }
+        } catch (error) {
+            console.error('Error deleting git tag:', error);
+            throw error;
+        }
+    }
+
+    async gitStash(repoPath: string, action: 'save' | 'apply' | 'pop' | 'list' | 'clear'): Promise<string> {
+        let script = '';
+        
+        switch (action) {
+            case 'save':
+                script = `cd "$1" && git stash save`;
+                break;
+            case 'apply':
+                script = `cd "$1" && git stash apply`;
+                break;
+            case 'pop':
+                script = `cd "$1" && git stash pop`;
+                break;
+            case 'list':
+                script = `cd "$1" && git stash list`;
+                break;
+            case 'clear':
+                script = `cd "$1" && git stash clear`;
+                break;
+        }
+
+        try {
+            const result = await this.executeScript(script, [repoPath]);
+
+            if (result.exitCode !== 0) {
+                throw new Error(`Failed to stash: ${result.stderr}`);
+            }
+            
+            return result.stdout;
+        } catch (error) {
+            console.error('Error with git stash:', error);
+            throw error;
+        }
+    }
+
+    async gitReset(repoPath: string, resetType: 'soft' | 'mixed' | 'hard', commitHash: string = 'HEAD'): Promise<void> {
+        // Prevent hard reset on protected branches unless explicitly allowed
+        const currentBranch = await this.getCurrentGitBranch(repoPath);
+        if (resetType === 'hard' && (currentBranch === 'main' || currentBranch === 'master')) {
+            throw new Error(`Hard reset not allowed on protected branch: ${currentBranch}`);
+        }
+
+        const script = `
+            cd "$1"
+            git reset --${resetType} "$2"
+        `;
+
+        try {
+            const result = await this.executeScript(script, [repoPath, commitHash]);
+
+            if (result.exitCode !== 0) {
+                throw new Error(`Failed to reset: ${result.stderr}`);
+            }
+        } catch (error) {
+            console.error('Error with git reset:', error);
+            throw error;
+        }
+    }
+
     private buildCommandAndOptions(script: string, workingDirectory?: string): { command: string, options: ExecOptions } {
         const platform = os.platform();
         let command: string;

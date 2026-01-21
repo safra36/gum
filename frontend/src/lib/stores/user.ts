@@ -24,6 +24,15 @@ export interface UserPermissions {
   canViewGitLogs: boolean;
   canSwitchBranch: boolean;
   canRevertCommit: boolean;
+  canCreateBranch: boolean;
+  canDeleteBranch: boolean;
+  canMergeBranch: boolean;
+  canGitPush: boolean;
+  canGitPull: boolean;
+  canCreateTag: boolean;
+  canDeleteTag: boolean;
+  canGitStash: boolean;
+  canGitReset: boolean;
 }
 
 // User store
@@ -44,6 +53,15 @@ export const permissions = derived(user, ($user): UserPermissions => {
       canViewGitLogs: false,
       canSwitchBranch: false,
       canRevertCommit: false,
+      canCreateBranch: false,
+      canDeleteBranch: false,
+      canMergeBranch: false,
+      canGitPush: false,
+      canGitPull: false,
+      canCreateTag: false,
+      canDeleteTag: false,
+      canGitStash: false,
+      canGitReset: false,
     };
   }
 
@@ -62,6 +80,15 @@ export const permissions = derived(user, ($user): UserPermissions => {
     canViewGitLogs: userPermissions.includes('get_git_log'),
     canSwitchBranch: userPermissions.includes('switch_branch'),
     canRevertCommit: userPermissions.includes('revert_commit'),
+    canCreateBranch: userPermissions.includes('create_branch'),
+    canDeleteBranch: userPermissions.includes('delete_branch'),
+    canMergeBranch: userPermissions.includes('merge_branch'),
+    canGitPush: userPermissions.includes('git_push'),
+    canGitPull: userPermissions.includes('git_pull'),
+    canCreateTag: userPermissions.includes('create_tag'),
+    canDeleteTag: userPermissions.includes('delete_tag'),
+    canGitStash: userPermissions.includes('git_stash'),
+    canGitReset: userPermissions.includes('git_reset'),
   };
 });
 
@@ -117,7 +144,12 @@ permissions.subscribe((currentPermissions) => {
     canEdit: currentPermissions.canEdit,
     canExecute: currentPermissions.canExecute,
     canCreateProject: currentPermissions.canCreateProject,
-    canViewGitLogs: currentPermissions.canViewGitLogs
+    canViewGitLogs: currentPermissions.canViewGitLogs,
+    canCreateBranch: currentPermissions.canCreateBranch,
+    canDeleteBranch: currentPermissions.canDeleteBranch,
+    canMergeBranch: currentPermissions.canMergeBranch,
+    canGitPush: currentPermissions.canGitPush,
+    canGitPull: currentPermissions.canGitPull
   });
 });
 
@@ -140,6 +172,15 @@ export const hasPermission = (permission: keyof UserPermissions): boolean => {
     canViewGitLogs: false,
     canSwitchBranch: false,
     canRevertCommit: false,
+    canCreateBranch: false,
+    canDeleteBranch: false,
+    canMergeBranch: false,
+    canGitPush: false,
+    canGitPull: false,
+    canCreateTag: false,
+    canDeleteTag: false,
+    canGitStash: false,
+    canGitReset: false,
   };
   
   const unsubscribe = permissions.subscribe(p => {

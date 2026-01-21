@@ -1009,6 +1009,251 @@ export class APIServer {
             }
         });
 
+        // NEW: Git Branch Creation Endpoint
+        this.app.post('/project/:id/branch', this.authenticateRequest, this.checkAccess(AuthLevels.CreateBranch), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+                const { branchName, sourceBranch = 'HEAD' } = req.body;
+                const currentUser = req["user"] as any;
+
+                if (!branchName) {
+                    return res.status(400).json({ error: "Branch name is required" });
+                }
+
+                // Validate branch name format
+                if (!/^[a-zA-Z0-9\-/_]+$/.test(branchName)) {
+                    return res.status(400).json({ error: "Invalid branch name format" });
+                }
+
+                const project = await this.projectService.getProjectById(projectId);
+                if (!project) {
+                    return res.status(404).json({ error: "Project not found" });
+                }
+
+                const executorService = ExecutorService.getInstance();
+                await executorService.createGitBranch(project.working_dir, branchName, sourceBranch);
+
+                // Audit log the operation
+                console.log(`[Audit] User ${currentUser.id} (${currentUser.username}) created branch ${branchName} in project ${projectId}`);
+
+                res.json({
+                    message: `Branch ${branchName} created successfully from ${sourceBranch}`,
+                    branch: branchName,
+                    sourceBranch
+                });
+            } catch (error) {
+                console.error('Error creating branch:', error);
+                res.status(500).json({
+                    error: "Failed to create branch",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        // NEW: Git Branch Deletion Endpoint
+        this.app.delete('/project/:id/branch', this.authenticateRequest, this.checkAccess(AuthLevels.DeleteBranch), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+                const { branchName, force = false } = req.body;
+                const currentUser = req["user"] as any;
+
+                if (!branchName) {
+                    return res.status(400).json({ error: "Branch name is required" });
+                }
+
+                const project = await this.projectService.getProjectById(projectId);
+                if (!project) {
+                    return res.status(404).json({ error: "Project not found" });
+                }
+
+                const executorService = ExecutorService.getInstance();
+                await executorService.deleteGitBranch(project.working_dir, branchName, force);
+
+                // Audit log the operation
+                console.log(`[Audit] User ${currentUser.id} (${currentUser.username}) deleted branch ${branchName} from project ${projectId}`);
+
+                res.json({
+                    message: `Branch ${branchName} deleted successfully`,
+                    branch: branchName
+                });
+            } catch (error) {
+                console.error('Error deleting branch:', error);
+                res.status(500).json({
+                    error: "Failed to delete branch",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        // NEW: Git Merge Endpoint
+        this.app.post('/project/:id/merge', this.authenticateRequest, this.checkAccess(AuthLevels.MergeBranch), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+                const { sourceBranch, targetBranch } = req.body;
+                const currentUser = req["user"] as any;
+
+                if (!sourceBranch || !targetBranch) {
+                    return res.status(400).json({ error: "Both source and target branch names are required" });
+                }
+
+                const project = await this.projectService.getProjectById(projectId);
+                if (!project) {
+                    return res.status(404).json({ error: "Project not found" });
+                }
+
+                const executorService = ExecutorService.getInstance();
+                await executorService.mergeGitBranch(project.working_dir, sourceBranch, targetBranch);
+
+                // Audit log the operation
+                console.log(`[Audit] User ${currentUser.id} (${currentUser.username}) merged ${sourceBranch} into ${targetBranch} in project ${projectId}`);
+
+                res.json({
+                    message: `Successfully merged ${sourceBranch} into ${targetBranch}`,
+                    sourceBranch,
+                    targetBranch
+                });
+            } catch (error) {
+                console.error('Error merging branches:', error);
+                res.status(500).json({
+                    error: "Failed to merge branches",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        // NEW: Git Push Endpoint
+        this.app.post('/project/:id/push', this.authenticateRequest, this.checkAccess(AuthLevels.GitPush), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+                const { branchName = 'HEAD' } = req.body;
+                const currentUser = req["user"] as any;
+
+                const project = await this.projectService.getProjectById(projectId);
+                if (!project) {
+                    return res.status(404).json({ error: "Project not found" });
+                }
+
+                const executorService = ExecutorService.getInstance();
+                await executorService.gitPush(project.working_dir, branchName);
+
+                // Audit log the operation
+                console.log(`[Audit] User ${currentUser.id} (${currentUser.username}) pushed changes to ${branchName} in project ${projectId}`);
+
+                res.json({
+                    message: `Successfully pushed changes to ${branchName}`,
+                    branch: branchName
+                });
+            } catch (error) {
+                console.error('Error pushing changes:', error);
+                res.status(500).json({
+                    error: "Failed to push changes",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        // NEW: Git Pull Endpoint
+        this.app.post('/project/:id/pull', this.authenticateRequest, this.checkAccess(AuthLevels.GitPull), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+                const { branchName = 'HEAD' } = req.body;
+                const currentUser = req["user"] as any;
+
+                const project = await this.projectService.getProjectById(projectId);
+                if (!project) {
+                    return res.status(404).json({ error: "Project not found" });
+                }
+
+                const executorService = ExecutorService.getInstance();
+                await executorService.gitPull(project.working_dir, branchName);
+
+                // Audit log the operation
+                console.log(`[Audit] User ${currentUser.id} (${currentUser.username}) pulled changes from ${branchName} in project ${projectId}`);
+
+                res.json({
+                    message: `Successfully pulled changes from ${branchName}`,
+                    branch: branchName
+                });
+            } catch (error) {
+                console.error('Error pulling changes:', error);
+                res.status(500).json({
+                    error: "Failed to pull changes",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        // NEW: Git Tag Creation Endpoint
+        this.app.post('/project/:id/tag', this.authenticateRequest, this.checkAccess(AuthLevels.CreateTag), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+                const { tagName, commitHash = 'HEAD' } = req.body;
+                const currentUser = req["user"] as any;
+
+                if (!tagName) {
+                    return res.status(400).json({ error: "Tag name is required" });
+                }
+
+                const project = await this.projectService.getProjectById(projectId);
+                if (!project) {
+                    return res.status(404).json({ error: "Project not found" });
+                }
+
+                const executorService = ExecutorService.getInstance();
+                await executorService.createGitTag(project.working_dir, tagName, commitHash);
+
+                // Audit log the operation
+                console.log(`[Audit] User ${currentUser.id} (${currentUser.username}) created tag ${tagName} in project ${projectId}`);
+
+                res.json({
+                    message: `Tag ${tagName} created successfully`,
+                    tag: tagName,
+                    commitHash
+                });
+            } catch (error) {
+                console.error('Error creating tag:', error);
+                res.status(500).json({
+                    error: "Failed to create tag",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
+        // NEW: Git Tag Deletion Endpoint
+        this.app.delete('/project/:id/tag', this.authenticateRequest, this.checkAccess(AuthLevels.DeleteTag), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {
+            try {
+                const projectId = parseInt(req.params.id);
+                const { tagName } = req.body;
+                const currentUser = req["user"] as any;
+
+                if (!tagName) {
+                    return res.status(400).json({ error: "Tag name is required" });
+                }
+
+                const project = await this.projectService.getProjectById(projectId);
+                if (!project) {
+                    return res.status(404).json({ error: "Project not found" });
+                }
+
+                const executorService = ExecutorService.getInstance();
+                await executorService.deleteGitTag(project.working_dir, tagName);
+
+                // Audit log the operation
+                console.log(`[Audit] User ${currentUser.id} (${currentUser.username}) deleted tag ${tagName} from project ${projectId}`);
+
+                res.json({
+                    message: `Tag ${tagName} deleted successfully`,
+                    tag: tagName
+                });
+            } catch (error) {
+                console.error('Error deleting tag:', error);
+                res.status(500).json({
+                    error: "Failed to delete tag",
+                    details: error instanceof Error ? error.message : String(error)
+                });
+            }
+        });
+
 
 
         this.app.post('/project/:id/cron', this.authenticateRequest, this.checkAccess(AuthLevels.SetCron), this.checkProjectAccess(ProjectAccessLevel.EXECUTE), async (req: Request, res: Response) => {

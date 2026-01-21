@@ -18,6 +18,15 @@ export enum AuthLevels {
     GetGitLog = "get_git_log",
     RevertCommit = "revert_commit",
     SwitchBranch = "switch_branch",
+    CreateBranch = "create_branch",
+    DeleteBranch = "delete_branch",
+    MergeBranch = "merge_branch",
+    GitPush = "git_push",
+    GitPull = "git_pull",
+    CreateTag = "create_tag",
+    DeleteTag = "delete_tag",
+    GitStash = "git_stash",
+    GitReset = "git_reset",
     
     // Cron Jobs
     SetCron = "set_cron",
