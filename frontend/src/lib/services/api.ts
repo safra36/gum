@@ -311,6 +311,121 @@ export async function removeCronJob(projectId: number): Promise<void> {
     }
 }
 
+// NEW: Git Branch Operations
+async function createGitBranch(projectId: number, branchName: string, sourceBranch: string = 'HEAD') {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/branch`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ branchName, sourceBranch })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to create branch');
+    }
+    return response.json();
+}
+
+async function deleteGitBranch(projectId: number, branchName: string, force: boolean = false) {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/branch`, {
+        method: "DELETE",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ branchName, force })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to delete branch');
+    }
+    return response.json();
+}
+
+async function mergeGitBranch(projectId: number, sourceBranch: string, targetBranch: string) {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/merge`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ sourceBranch, targetBranch })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to merge branch');
+    }
+    return response.json();
+}
+
+// NEW: Git Push/Pull Operations
+async function gitPush(projectId: number, branchName: string = 'HEAD') {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/push`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ branchName })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to push changes');
+    }
+    return response.json();
+}
+
+async function gitPull(projectId: number, branchName: string = 'HEAD') {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/pull`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ branchName })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to pull changes');
+    }
+    return response.json();
+}
+
+// NEW: Git Tag Operations
+async function createGitTag(projectId: number, tagName: string, commitHash: string = 'HEAD') {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/tag`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ tagName, commitHash })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to create tag');
+    }
+    return response.json();
+}
+
+async function deleteGitTag(projectId: number, tagName: string) {
+    const response = await fetch(`${PUBLIC_BASE_URL}/project/${projectId}/tag`, {
+        method: "DELETE",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ tagName })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to delete tag');
+    }
+    return response.json();
+}
+
 // User Management API functions
 export async function getUsers(): Promise<any[]> {
     const response = await fetch(`${PUBLIC_BASE_URL}/users`, {
@@ -710,5 +825,23 @@ export const api = {
     deleteLogConfig,
     streamLogs,
     getLogPermissions,
-    setLogPermission
+    setLogPermission,
+    // NEW: Git operations
+    createGitBranch,
+    deleteGitBranch,
+    mergeGitBranch,
+    gitPush,
+    gitPull,
+    createGitTag,
+    deleteGitTag
+};
+
+export {
+    createGitBranch,
+    deleteGitBranch,
+    mergeGitBranch,
+    gitPush,
+    gitPull,
+    createGitTag,
+    deleteGitTag
 };

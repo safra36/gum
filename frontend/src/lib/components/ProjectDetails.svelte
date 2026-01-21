@@ -11,11 +11,11 @@
     import LogConfigForm from "./LogConfigForm.svelte";
     import LiveLogsViewer from "./LiveLogsViewer.svelte";
     import UnifiedPermissionManager from "./UnifiedPermissionManager.svelte";
-    import { executeStaging, executeProject, fetchGitLog, fetchGitBranches, switchGitBranch, revertToCommit, switchToHead, setCronJob, getCronJob, removeCronJob, fetchLogConfigs, createLogConfig, updateLogConfig, deleteLogConfig, getLogPermissions } from "../services/api";
+    import { executeStaging, executeProject, fetchGitLog, fetchGitBranches, switchGitBranch, revertToCommit, switchToHead, setCronJob, getCronJob, removeCronJob, fetchLogConfigs, createLogConfig, updateLogConfig, deleteLogConfig, getLogPermissions, createGitBranch, deleteGitBranch, mergeGitBranch, gitPush, gitPull, createGitTag, deleteGitTag } from "../services/api";
     import type { Project, ExecutionResult, GitLogEntry, LogConfig } from "$lib/types";
     import { permissions, user } from '$lib/stores/user';
     import { toast as addToast } from "$lib/stores/toast";
-    import { Loader2, FolderOpen, GitBranch, Play, Edit, GitBranchIcon, Check, GitCommit, PenTool, ArrowUp, RotateCcw, Clock, Info, Trash2, Terminal, Lock } from "lucide-svelte";
+    import { Loader2, FolderOpen, GitBranch, Play, Edit, GitBranchIcon, Check, GitCommit, PenTool, ArrowUp, RotateCcw, Clock, Info, Trash2, Terminal, Lock, GitMerge, GitPullRequest, Tag, Upload, Download } from "lucide-svelte";
 
     export let project: Project;
     export let onEdit: () => void;
@@ -35,6 +35,26 @@
     let previousProjectId: number | null = null;
     let isRevertingCommit = false;
     let revertError: string | null = null;
+    
+    // NEW: Git Operations State
+    let showGitBranchModal = false;
+    let showGitMergeModal = false;
+    let showGitTagModal = false;
+    let newBranchName = "";
+    let sourceBranch = "";
+    let mergeSourceBranch = "";
+    let mergeTargetBranch = "";
+    let newTagName = "";
+    let tagCommitHash = "";
+    let isCreatingBranch = false;
+    let isDeletingBranch = false;
+    let isMergingBranch = false;
+    let isPushing = false;
+    let isPulling = false;
+    let isCreatingTag = false;
+    let isDeletingTag = false;
+    let gitOperationError: string | null = null;
+    let gitOperationSuccess: string | null = null;
 
 
     let showCronJobModal = false;
@@ -271,6 +291,125 @@
         }
     }
 
+    // NEW: Git Operations Handlers
+    async function handleCreateBranch() {
+        gitOperationError = null;
+        gitOperationSuccess = null;
+        isCreatingBranch = true;
+        try {
+            await createGitBranch(project.id, newBranchName, sourceBranch || 'HEAD');
+            gitOperationSuccess = `Branch '${newBranchName}' created successfully`;
+            await loadGitBranches(); // Refresh branch list
+            showGitBranchModal = false;
+            newBranchName = "";
+            sourceBranch = "";
+        } catch (error) {
+            console.error("Failed to create branch:", error);
+            gitOperationError = `Failed to create branch: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        } finally {
+            isCreatingBranch = false;
+        }
+    }
+
+    async function handleDeleteBranch() {
+        if (!activeBranch) return;
+        gitOperationError = null;
+        gitOperationSuccess = null;
+        isDeletingBranch = true;
+        try {
+            await deleteGitBranch(project.id, activeBranch, false);
+            gitOperationSuccess = `Branch '${activeBranch}' deleted successfully`;
+            await loadGitBranches(); // Refresh branch list
+        } catch (error) {
+            console.error("Failed to delete branch:", error);
+            gitOperationError = `Failed to delete branch: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        } finally {
+            isDeletingBranch = false;
+        }
+    }
+
+    async function handleMergeBranch() {
+        gitOperationError = null;
+        gitOperationSuccess = null;
+        isMergingBranch = true;
+        try {
+            await mergeGitBranch(project.id, mergeSourceBranch, mergeTargetBranch);
+            gitOperationSuccess = `Branch '${mergeSourceBranch}' merged into '${mergeTargetBranch}' successfully`;
+            await loadGitBranches(); // Refresh branch list
+            showGitMergeModal = false;
+            mergeSourceBranch = "";
+            mergeTargetBranch = "";
+        } catch (error) {
+            console.error("Failed to merge branch:", error);
+            gitOperationError = `Failed to merge branch: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        } finally {
+            isMergingBranch = false;
+        }
+    }
+
+    async function handlePush() {
+        gitOperationError = null;
+        gitOperationSuccess = null;
+        isPushing = true;
+        try {
+            await gitPush(project.id, activeBranch || 'HEAD');
+            gitOperationSuccess = `Changes pushed successfully`;
+        } catch (error) {
+            console.error("Failed to push:", error);
+            gitOperationError = `Failed to push: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        } finally {
+            isPushing = false;
+        }
+    }
+
+    async function handlePull() {
+        gitOperationError = null;
+        gitOperationSuccess = null;
+        isPulling = true;
+        try {
+            await gitPull(project.id, activeBranch || 'HEAD');
+            gitOperationSuccess = `Changes pulled successfully`;
+        } catch (error) {
+            console.error("Failed to pull:", error);
+            gitOperationError = `Failed to pull: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        } finally {
+            isPulling = false;
+        }
+    }
+
+    async function handleCreateTag() {
+        gitOperationError = null;
+        gitOperationSuccess = null;
+        isCreatingTag = true;
+        try {
+            await createGitTag(project.id, newTagName, tagCommitHash || 'HEAD');
+            gitOperationSuccess = `Tag '${newTagName}' created successfully`;
+            showGitTagModal = false;
+            newTagName = "";
+            tagCommitHash = "";
+        } catch (error) {
+            console.error("Failed to create tag:", error);
+            gitOperationError = `Failed to create tag: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        } finally {
+            isCreatingTag = false;
+        }
+    }
+
+    async function handleDeleteTag(tagName: string) {
+        gitOperationError = null;
+        gitOperationSuccess = null;
+        isDeletingTag = true;
+        try {
+            await deleteGitTag(project.id, tagName);
+            gitOperationSuccess = `Tag '${tagName}' deleted successfully`;
+        } catch (error) {
+            console.error("Failed to delete tag:", error);
+            gitOperationError = `Failed to delete tag: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        } finally {
+            isDeletingTag = false;
+        }
+    }
+
 
     async function loadCronJob() {
         isLoadingCronJob = true;
@@ -390,6 +529,11 @@
         } finally {
             isLoadingLogs = false;
         }
+    }
+
+    // Helper function to convert string permissions to LogPermissionType
+    function getLogPermissionTypes(): any[] {
+        return userLogPermissions as any[];
     }
 
     async function handleSaveLogConfig(event: CustomEvent<LogConfig>) {
@@ -581,23 +725,23 @@
         </h3>
         
         <!-- Check if user has any toolbox permissions -->
-        {#if $permissions.canExecute || $permissions.canViewGitLogs || $permissions.canSwitchBranch || $permissions.canSetCron}
+        {#if $permissions.canExecute || $permissions.canViewGitLogs || $permissions.canSwitchBranch || $permissions.canSetCron || $permissions.canCreateBranch || $permissions.canDeleteBranch || $permissions.canMergeBranch || $permissions.canGitPush || $permissions.canGitPull || $permissions.canCreateTag || $permissions.canDeleteTag}
             <!-- Execution Mode Toggle -->
             {#if $permissions.canExecute}
                 <div class="mb-4 flex items-center space-x-4">
                     <label class="flex items-center space-x-2">
-                        <input 
-                            type="radio" 
-                            bind:group={currentExecutionMode} 
+                        <input
+                            type="radio"
+                            bind:group={currentExecutionMode}
                             value="normal"
                             class="text-blue-600 focus:ring-blue-500"
                         />
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Normal Execution</span>
                     </label>
                     <label class="flex items-center space-x-2">
-                        <input 
-                            type="radio" 
-                            bind:group={currentExecutionMode} 
+                        <input
+                            type="radio"
+                            bind:group={currentExecutionMode}
                             value="streaming"
                             class="text-blue-600 focus:ring-blue-500"
                         />
@@ -608,7 +752,7 @@
                     </label>
                 </div>
             {/if}
-            
+             
             <div class="flex flex-wrap gap-3">
                 {#if $permissions.canExecute}
                   <button
@@ -674,16 +818,121 @@
                 {/if}
 
                 {#if $permissions.canExecute}
-                  <button
-                      class="bg-teal-500 text-white px-4 py-2 rounded-md hover:bg-teal-600 transition-colors duration-200 flex items-center justify-center"
-                      on:click={() => showLogPermissionManager = true}
-                      title="Manage log configurations and permissions"
-                  >
-                      <Lock class="mr-2" size={18} />
-                      Log Management
-                  </button>
+                    <button
+                        class="bg-teal-500 text-white px-4 py-2 rounded-md hover:bg-teal-600 transition-colors duration-200 flex items-center justify-center"
+                        on:click={() => showLogPermissionManager = true}
+                        title="Manage log configurations and permissions"
+                    >
+                        <Lock class="mr-2" size={18} />
+                        Log Management
+                    </button>
                 {/if}
-
+            
+                <!-- NEW: Git Operations Buttons -->
+                {#if $permissions.canCreateBranch}
+                    <button
+                        class="bg-emerald-500 text-white px-4 py-2 rounded-md hover:bg-emerald-600 transition-colors duration-200 flex items-center justify-center"
+                        on:click={() => { showGitBranchModal = true; gitOperationError = null; }}
+                        title="Create new Git branch"
+                    >
+                        <GitBranch class="mr-2" size={18} />
+                        Create Branch
+                    </button>
+                {/if}
+            
+                {#if $permissions.canDeleteBranch && activeBranch}
+                    <button
+                        class="bg-rose-500 text-white px-4 py-2 rounded-md hover:bg-rose-600 transition-colors duration-200 flex items-center justify-center"
+                        on:click={handleDeleteBranch}
+                        disabled={isDeletingBranch}
+                        title={`Delete branch ${activeBranch}`}
+                    >
+                        {#if isDeletingBranch}
+                            <Loader2 class="animate-spin mr-2" size={18} />
+                            Deleting...
+                        {:else}
+                            <Trash2 class="mr-2" size={18} />
+                            Delete Branch
+                        {/if}
+                    </button>
+                {/if}
+            
+                {#if $permissions.canMergeBranch}
+                    <button
+                        class="bg-violet-500 text-white px-4 py-2 rounded-md hover:bg-violet-600 transition-colors duration-200 flex items-center justify-center"
+                        on:click={() => { showGitMergeModal = true; gitOperationError = null; }}
+                        title="Merge Git branches"
+                    >
+                        <GitMerge class="mr-2" size={18} />
+                        Merge Branch
+                    </button>
+                {/if}
+            
+                {#if $permissions.canGitPush}
+                    <button
+                        class="bg-cyan-500 text-white px-4 py-2 rounded-md hover:bg-cyan-600 transition-colors duration-200 flex items-center justify-center"
+                        on:click={handlePush}
+                        disabled={isPushing}
+                        title="Push changes to remote"
+                    >
+                        {#if isPushing}
+                            <Loader2 class="animate-spin mr-2" size={18} />
+                            Pushing...
+                        {:else}
+                            <Upload class="mr-2" size={18} />
+                            Push
+                        {/if}
+                    </button>
+                {/if}
+            
+                {#if $permissions.canGitPull}
+                    <button
+                        class="bg-orange-500 text-white px-4 py-2 rounded-md hover:bg-orange-600 transition-colors duration-200 flex items-center justify-center"
+                        on:click={handlePull}
+                        disabled={isPulling}
+                        title="Pull changes from remote"
+                    >
+                        {#if isPulling}
+                            <Loader2 class="animate-spin mr-2" size={18} />
+                            Pulling...
+                        {:else}
+                            <Download class="mr-2" size={18} />
+                            Pull
+                        {/if}
+                    </button>
+                {/if}
+            
+                {#if $permissions.canCreateTag}
+                    <button
+                        class="bg-pink-500 text-white px-4 py-2 rounded-md hover:bg-pink-600 transition-colors duration-200 flex items-center justify-center"
+                        on:click={() => { showGitTagModal = true; gitOperationError = null; }}
+                        title="Create Git tag"
+                    >
+                        <Tag class="mr-2" size={18} />
+                        Create Tag
+                    </button>
+                {/if}
+            
+                {#if $permissions.canDeleteTag}
+                    <button
+                        class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 transition-colors duration-200 flex items-center justify-center"
+                        on:click={() => {
+                            const tagName = prompt('Enter tag name to delete:');
+                            if (tagName) handleDeleteTag(tagName);
+                        }}
+                        disabled={isDeletingTag}
+                        title="Delete Git tag"
+                    >
+                        {#if isDeletingTag}
+                            <Loader2 class="animate-spin mr-2" size={18} />
+                            Deleting...
+                        {:else}
+                            <Trash2 class="mr-2" size={18} />
+                            Delete Tag
+                        {/if}
+                    </button>
+                {/if}
+            
                 <!-- Additional tools can be added here in the future -->
             </div>
         {:else}
@@ -803,7 +1052,7 @@
             <LogConfigList
                 logConfigs={logConfigs}
                 isLoading={isLoadingLogs}
-                userLogPermissions={userLogPermissions}
+                userLogPermissions={getLogPermissionTypes()}
                 canManagePermissions={userCanManageLogPermissions}
                 isAdmin={$user?.role === 'admin'}
                 on:viewLogs={(e) => {
@@ -938,4 +1187,213 @@
         userHasManagePermission={userCanManageLogPermissions}
         on:close={() => showLogPermissionManager = false}
     />
+{/if}
+
+<!-- NEW: GIT BRANCH MODAL -->
+{#if showGitBranchModal}
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" in:fade={{ duration: 200 }}>
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md" in:fly={{ y: 20, duration: 300 }}>
+            <h2 class="text-2xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
+                <GitBranch class="mr-2 text-emerald-500" size={24} />
+                Create New Branch
+            </h2>
+            
+            <div class="mb-4">
+                <label for="newBranchName" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Branch Name:</label>
+                <input
+                    id="newBranchName"
+                    type="text"
+                    bind:value={newBranchName}
+                    placeholder="Enter new branch name"
+                    class="w-full p-2 border rounded-md focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+            </div>
+
+            <div class="mb-4">
+                <label for="sourceBranch" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Source Branch (optional):</label>
+                <input
+                    id="sourceBranch"
+                    type="text"
+                    bind:value={sourceBranch}
+                    placeholder="Source branch (default: HEAD)"
+                    class="w-full p-2 border rounded-md focus:ring-2 focus:ring-emerald-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+            </div>
+
+            {#if gitOperationError}
+                <p class="text-red-500 dark:text-red-400 mb-4">{gitOperationError}</p>
+            {/if}
+
+            <div class="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2">
+                <button
+                    class="w-full sm:w-auto px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors duration-200"
+                    on:click={() => showGitBranchModal = false}
+                >
+                    Cancel
+                </button>
+                <button
+                    class="w-full sm:w-auto px-4 py-2 bg-emerald-500 text-white rounded-md hover:bg-emerald-600 disabled:opacity-50 transition-colors duration-200 flex items-center justify-center"
+                    on:click={handleCreateBranch}
+                    disabled={!newBranchName || isCreatingBranch}
+                >
+                    {#if isCreatingBranch}
+                        <Loader2 class="animate-spin mr-2" size={18} />
+                        Creating...
+                    {:else}
+                        Create Branch
+                    {/if}
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- NEW: GIT MERGE MODAL -->
+{#if showGitMergeModal}
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" in:fade={{ duration: 200 }}>
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md" in:fly={{ y: 20, duration: 300 }}>
+            <h2 class="text-2xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
+                <GitMerge class="mr-2 text-violet-500" size={24} />
+                Merge Branches
+            </h2>
+            
+            <div class="mb-4">
+                <label for="mergeSourceBranch" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Source Branch:</label>
+                <input
+                    id="mergeSourceBranch"
+                    type="text"
+                    bind:value={mergeSourceBranch}
+                    placeholder="Source branch to merge from"
+                    class="w-full p-2 border rounded-md focus:ring-2 focus:ring-violet-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+            </div>
+
+            <div class="mb-4">
+                <label for="mergeTargetBranch" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Target Branch:</label>
+                <input
+                    id="mergeTargetBranch"
+                    type="text"
+                    bind:value={mergeTargetBranch}
+                    placeholder="Target branch to merge into"
+                    class="w-full p-2 border rounded-md focus:ring-2 focus:ring-violet-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+            </div>
+
+            {#if gitOperationError}
+                <p class="text-red-500 dark:text-red-400 mb-4">{gitOperationError}</p>
+            {/if}
+
+            <div class="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2">
+                <button
+                    class="w-full sm:w-auto px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors duration-200"
+                    on:click={() => showGitMergeModal = false}
+                >
+                    Cancel
+                </button>
+                <button
+                    class="w-full sm:w-auto px-4 py-2 bg-violet-500 text-white rounded-md hover:bg-violet-600 disabled:opacity-50 transition-colors duration-200 flex items-center justify-center"
+                    on:click={handleMergeBranch}
+                    disabled={!mergeSourceBranch || !mergeTargetBranch || isMergingBranch}
+                >
+                    {#if isMergingBranch}
+                        <Loader2 class="animate-spin mr-2" size={18} />
+                        Merging...
+                    {:else}
+                        Merge Branches
+                    {/if}
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- NEW: GIT TAG MODAL -->
+{#if showGitTagModal}
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" in:fade={{ duration: 200 }}>
+        <div class="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md" in:fly={{ y: 20, duration: 300 }}>
+            <h2 class="text-2xl font-bold mb-4 flex items-center text-gray-900 dark:text-white">
+                <Tag class="mr-2 text-pink-500" size={24} />
+                Create New Tag
+            </h2>
+            
+            <div class="mb-4">
+                <label for="newTagName" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tag Name:</label>
+                <input
+                    id="newTagName"
+                    type="text"
+                    bind:value={newTagName}
+                    placeholder="Enter new tag name"
+                    class="w-full p-2 border rounded-md focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+            </div>
+
+            <div class="mb-4">
+                <label for="tagCommitHash" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Commit Hash (optional):</label>
+                <input
+                    id="tagCommitHash"
+                    type="text"
+                    bind:value={tagCommitHash}
+                    placeholder="Commit hash (default: HEAD)"
+                    class="w-full p-2 border rounded-md focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+            </div>
+
+            {#if gitOperationError}
+                <p class="text-red-500 dark:text-red-400 mb-4">{gitOperationError}</p>
+            {/if}
+
+            <div class="flex flex-col sm:flex-row justify-end space-y-2 sm:space-y-0 sm:space-x-2">
+                <button
+                    class="w-full sm:w-auto px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors duration-200"
+                    on:click={() => showGitTagModal = false}
+                >
+                    Cancel
+                </button>
+                <button
+                    class="w-full sm:w-auto px-4 py-2 bg-pink-500 text-white rounded-md hover:bg-pink-600 disabled:opacity-50 transition-colors duration-200 flex items-center justify-center"
+                    on:click={handleCreateTag}
+                    disabled={!newTagName || isCreatingTag}
+                >
+                    {#if isCreatingTag}
+                        <Loader2 class="animate-spin mr-2" size={18} />
+                        Creating...
+                    {:else}
+                        Create Tag
+                    {/if}
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- Git Operation Success Notification -->
+{#if gitOperationSuccess}
+<div class="fixed bottom-4 right-4 z-50">
+    <div class="bg-green-500 text-white px-4 py-3 rounded-lg shadow-lg flex items-center space-x-2">
+        <Check size={18} />
+        <span>{gitOperationSuccess}</span>
+        <button
+            class="text-white hover:text-green-100 ml-2"
+            on:click={() => gitOperationSuccess = null}
+        >
+            <span class="text-lg font-bold">×</span>
+        </button>
+    </div>
+</div>
+{/if}
+
+<!-- Git Operations Status Section -->
+{#if gitOperationError}
+<div class="fixed bottom-4 right-4 z-50">
+    <div class="bg-red-500 text-white px-4 py-3 rounded-lg shadow-lg flex items-center space-x-2">
+        <Info size={18} />
+        <span>{gitOperationError}</span>
+        <button
+            class="text-white hover:text-red-100 ml-2"
+            on:click={() => gitOperationError = null}
+        >
+            <span class="text-lg font-bold">×</span>
+        </button>
+    </div>
+</div>
 {/if}
