@@ -67,28 +67,54 @@ export const permissions = derived(user, ($user): UserPermissions => {
 
   const userPermissions = $user.permissions;
   
-  // Map backend permissions (snake_case) to frontend permissions
+  // Admin users have all permissions (match backend behavior)
+  if ($user.role === 'admin') {
+      return {
+          canEdit: true,
+          canExecute: true,
+          canViewLogs: true,
+          canViewExecutionHistory: true,
+          canCreateProject: true,
+          canDeleteProject: true,
+          canManageUsers: true,
+          canSetCron: true,
+          canViewGitLogs: true,
+          canSwitchBranch: true,
+          canRevertCommit: true,
+          canCreateBranch: true,
+          canDeleteBranch: true,
+          canMergeBranch: true,
+          canGitPush: true,
+          canGitPull: true,
+          canCreateTag: true,
+          canDeleteTag: true,
+          canGitStash: true,
+          canGitReset: true,
+      };
+  }
+ 
+  // Map backend permissions (snake_case) to frontend permissions for non-admin users
   return {
-    canEdit: userPermissions.includes('editing_project'),
-    canExecute: userPermissions.includes('execute_script'),
-    canViewLogs: userPermissions.includes('view_execution_logs'),
-    canViewExecutionHistory: userPermissions.includes('view_execution_history'),
-    canCreateProject: userPermissions.includes('creating_project'),
-    canDeleteProject: userPermissions.includes('delete_project'),
-    canManageUsers: userPermissions.includes('manage_users'),
-    canSetCron: userPermissions.includes('set_cron'),
-    canViewGitLogs: userPermissions.includes('get_git_log'),
-    canSwitchBranch: userPermissions.includes('switch_branch'),
-    canRevertCommit: userPermissions.includes('revert_commit'),
-    canCreateBranch: userPermissions.includes('create_branch'),
-    canDeleteBranch: userPermissions.includes('delete_branch'),
-    canMergeBranch: userPermissions.includes('merge_branch'),
-    canGitPush: userPermissions.includes('git_push'),
-    canGitPull: userPermissions.includes('git_pull'),
-    canCreateTag: userPermissions.includes('create_tag'),
-    canDeleteTag: userPermissions.includes('delete_tag'),
-    canGitStash: userPermissions.includes('git_stash'),
-    canGitReset: userPermissions.includes('git_reset'),
+      canEdit: userPermissions.includes('editing_project'),
+      canExecute: userPermissions.includes('execute_script'),
+      canViewLogs: userPermissions.includes('view_execution_logs'),
+      canViewExecutionHistory: userPermissions.includes('view_execution_history'),
+      canCreateProject: userPermissions.includes('creating_project'),
+      canDeleteProject: userPermissions.includes('delete_project'),
+      canManageUsers: userPermissions.includes('manage_users'),
+      canSetCron: userPermissions.includes('set_cron'),
+      canViewGitLogs: userPermissions.includes('get_git_log'),
+      canSwitchBranch: userPermissions.includes('switch_branch'),
+      canRevertCommit: userPermissions.includes('revert_commit'),
+      canCreateBranch: userPermissions.includes('create_branch'),
+      canDeleteBranch: userPermissions.includes('delete_branch'),
+      canMergeBranch: userPermissions.includes('merge_branch'),
+      canGitPush: userPermissions.includes('git_push'),
+      canGitPull: userPermissions.includes('git_pull'),
+      canCreateTag: userPermissions.includes('create_tag'),
+      canDeleteTag: userPermissions.includes('delete_tag'),
+      canGitStash: userPermissions.includes('git_stash'),
+      canGitReset: userPermissions.includes('git_reset'),
   };
 });
 

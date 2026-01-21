@@ -42,31 +42,51 @@
   };
 
   const availablePermissions = [
-    'creating_project',
-    'editing_project',
-    'delete_project',
-    'view_project',
-    'execute_script',
-    'view_execution_history',
-    'view_execution_logs',
-    'get_git_log',
-    'revert_commit',
-    'switch_branch',
-    'set_cron'
+      'creating_project',
+      'editing_project',
+      'delete_project',
+      'view_project',
+      'execute_script',
+      'view_execution_history',
+      'view_execution_logs',
+      'get_git_log',
+      'revert_commit',
+      'switch_branch',
+      'set_cron',
+      // NEW: Git permissions
+      'create_branch',
+      'delete_branch',
+      'merge_branch',
+      'git_push',
+      'git_pull',
+      'create_tag',
+      'delete_tag',
+      'git_stash',
+      'git_reset'
   ];
 
   const permissionLabels: { [key: string]: string } = {
-    'creating_project': 'Create Projects',
-    'editing_project': 'Edit Projects',
-    'delete_project': 'Delete Projects',
-    'view_project': 'View Projects',
-    'execute_script': 'Execute Scripts',
-    'view_execution_history': 'View Execution History',
-    'view_execution_logs': 'View Execution Logs',
-    'get_git_log': 'View Git Log',
-    'revert_commit': 'Revert Commits',
-    'switch_branch': 'Switch Branches',
-    'set_cron': 'Set Cron Jobs'
+      'creating_project': 'Create Projects',
+      'editing_project': 'Edit Projects',
+      'delete_project': 'Delete Projects',
+      'view_project': 'View Projects',
+      'execute_script': 'Execute Scripts',
+      'view_execution_history': 'View Execution History',
+      'view_execution_logs': 'View Execution Logs',
+      'get_git_log': 'View Git Log',
+      'revert_commit': 'Revert Commits',
+      'switch_branch': 'Switch Branches',
+      'set_cron': 'Set Cron Jobs',
+      // NEW: Git permissions labels
+      'create_branch': 'Create Git Branches',
+      'delete_branch': 'Delete Git Branches',
+      'merge_branch': 'Merge Git Branches',
+      'git_push': 'Git Push Changes',
+      'git_pull': 'Git Pull Changes',
+      'create_tag': 'Create Git Tags',
+      'delete_tag': 'Delete Git Tags',
+      'git_stash': 'Git Stash Changes',
+      'git_reset': 'Git Reset Changes'
   };
 
   onMount(async () => {
