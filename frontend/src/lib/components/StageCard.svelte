@@ -33,7 +33,7 @@
         skipped: { icon: SkipForward, color: "text-amber-500 dark:text-amber-400", text: "Skipped", bg: "bg-amber-100 dark:bg-amber-900/30" }
     };
     
-    let isExpanded = false;
+    let isExpanded = true;
     let showFullScript = false;
     
     function toggleExpand() {
