@@ -622,7 +622,11 @@
           </div>
 
           <div in:fly={{ y: 20, duration: 300, delay: 600 }}>
-              <StageList stages={project.stagingConfig.stages} />
+              <StageList
+                  stages={project.stagingConfig.stages}
+                  onExecuteAll={handleExecuteStaging}
+                  isExecutingAll={isExecuting}
+              />
           </div>
 
       {:else}
