@@ -10,68 +10,72 @@
     let copied: boolean = false;
     let copyTimeout: ReturnType<typeof setTimeout>;
     
+    function escapeHtml(text: string): string {
+        const map: { [key: string]: string } = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        };
+        return text.replace(/[&<>"']/g, (char) => map[char]);
+    }
+    
     function highlightBashCode(rawCode: string): string {
         if (!rawCode) return "";
         
-        let html = rawCode
-            .split('\n')
-            .map((line, lineNum) => {
-                // Escape HTML
-                let escapedLine = line
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#39;');
-                
-                // Highlight comments
-                escapedLine = escapedLine.replace(
-                    /#.*/g,
-                    '<span class="text-gray-400">$&</span>'
-                );
-                
-                // Highlight strings (double quotes)
-                escapedLine = escapedLine.replace(
-                    /"[^"]*"/g,
-                    '<span class="text-green-400">$&</span>'
-                );
-                
-                // Highlight strings (single quotes)
-                escapedLine = escapedLine.replace(
-                    /'[^']*'/g,
-                    '<span class="text-green-400">$&</span>'
-                );
-                
-                // Highlight variables
-                escapedLine = escapedLine.replace(
-                    /\$\{[^}]+\}|\$\w+/g,
-                    '<span class="text-purple-400">$&</span>'
-                );
-                
-                // Highlight keywords
-                const keywords = ['if', 'then', 'else', 'elif', 'fi', 'for', 'while', 'do', 'done', 'case', 'esac', 'function', 'return', 'export', 'source', 'exit', 'set', 'unset', 'shift', 'break', 'continue', 'true', 'false'];
-                keywords.forEach(keyword => {
-                    const regex = new RegExp(`\\b${keyword}\\b`, 'g');
-                    escapedLine = escapedLine.replace(regex, `<span class="text-blue-400">$&</span>`);
-                });
-                
-                // Highlight numbers
-                escapedLine = escapedLine.replace(
-                    /\b\d+\b/g,
-                    '<span class="text-orange-400">$&</span>'
-                );
-                
-                // Highlight common commands at start of line
-                const commands = ['cd', 'ls', 'mkdir', 'rm', 'cp', 'mv', 'cat', 'grep', 'find', 'sed', 'awk', 'chmod', 'chown', 'sudo', 'apt', 'yum', 'npm', 'yarn', 'docker', 'git', 'echo', 'printf', 'test'];
-                const cmdRegex = new RegExp(`^(\\s*)(${commands.join('|')})\\b`);
-                escapedLine = escapedLine.replace(cmdRegex, '$1<span class="text-cyan-400">$2</span>');
-                
-                const lineNumber = lineNum + 1;
-                return `<div class="flex"><span class="w-8 text-right pr-3 select-none text-gray-500">${lineNumber}</span><span class="flex-1">${escapedLine}</span></div>`;
-            })
-            .join('');
+        const lines = rawCode.split('\n');
         
-        return html;
+        return lines.map((line, lineNum) => {
+            // First escape HTML
+            let escapedLine = escapeHtml(line);
+            
+            // Then apply syntax highlighting with careful replacements
+            // Comments - must be done first to avoid highlighting inside comments
+            escapedLine = escapedLine.replace(
+                /^([^#]*)#(.*)$/,
+                '$1<span class="text-gray-400">#$2</span>'
+            );
+            
+            // Strings (double quotes) - preserve content
+            escapedLine = escapedLine.replace(
+                /&quot;([^&]|&[^q]|&q[^u]|&qu[^o]|&quo[^t]|&quot[^;])*?&quot;/g,
+                '<span class="text-green-400">$&</span>'
+            );
+            
+            // Strings (single quotes)
+            escapedLine = escapedLine.replace(
+                /&#39;([^&]|&[^#])*?&#39;/g,
+                '<span class="text-green-400">$&</span>'
+            );
+            
+            // Variables $VAR and ${VAR}
+            escapedLine = escapedLine.replace(
+                /\$\{[^}]+\}|\$\w+/g,
+                '<span class="text-purple-400">$&</span>'
+            );
+            
+            // Keywords
+            const keywords = ['if', 'then', 'else', 'elif', 'fi', 'for', 'while', 'do', 'done', 'case', 'esac', 'function', 'return', 'export', 'source', 'exit', 'set', 'unset', 'shift', 'break', 'continue', 'true', 'false'];
+            keywords.forEach(keyword => {
+                const regex = new RegExp(`\\b${keyword}\\b`, 'g');
+                escapedLine = escapedLine.replace(regex, `<span class="text-blue-400">$&</span>`);
+            });
+            
+            // Numbers
+            escapedLine = escapedLine.replace(
+                /\b\d+\b/g,
+                '<span class="text-orange-400">$&</span>'
+            );
+            
+            // Common commands at start of line
+            const commands = ['cd', 'ls', 'mkdir', 'rm', 'cp', 'mv', 'cat', 'grep', 'find', 'sed', 'awk', 'chmod', 'chown', 'sudo', 'apt', 'yum', 'npm', 'yarn', 'docker', 'git', 'echo', 'printf', 'test', 'sleep', 'node'];
+            const cmdRegex = new RegExp(`^(\\s*)(${commands.join('|')})\\b`);
+            escapedLine = escapedLine.replace(cmdRegex, '$1<span class="text-cyan-400">$2</span>');
+            
+            const lineNumber = lineNum + 1;
+            return `<div class="flex"><span class="w-8 text-right pr-3 select-none text-gray-500">${lineNumber}</span><span class="flex-1">${escapedLine}</span></div>`;
+        }).join('');
     }
     
     function copyToClipboard() {
@@ -114,20 +118,22 @@
             </button>
         </div>
         
-        <div class="p-3 font-mono text-sm overflow-x-auto bg-gray-950 text-gray-100">
-            {#if isExpanded || code.split('\n').length <= 10}
-                {@html highlightBashCode(code)}
-            {:else}
-                {@html highlightBashCode(code.split('\n').slice(0, 10).join('\n'))}
-                <div class="mt-2 text-center">
-                    <button
-                        class="text-blue-400 hover:text-blue-300 text-sm font-medium"
-                        on:click={() => isExpanded = true}
-                    >
-                        Show more ({code.split('\n').length - 10} lines hidden)
-                    </button>
-                </div>
-            {/if}
+        <div class="p-3 font-mono text-sm overflow-x-auto bg-gray-950 text-gray-100 max-h-96">
+            <div class="whitespace-pre">
+                {#if isExpanded || code.split('\n').length <= 10}
+                    {@html highlightBashCode(code)}
+                {:else}
+                    {@html highlightBashCode(code.split('\n').slice(0, 10).join('\n'))}
+                    <div class="mt-2 text-center">
+                        <button
+                            class="text-blue-400 hover:text-blue-300 text-sm font-medium"
+                            on:click={() => isExpanded = true}
+                        >
+                            Show more ({code.split('\n').length - 10} lines hidden)
+                        </button>
+                    </div>
+                {/if}
+            </div>
         </div>
     </div>
 </div>

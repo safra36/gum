@@ -150,14 +150,14 @@
             <p class="text-gray-500 dark:text-gray-400">No stages defined for this project.</p>
         </div>
     {:else}
-        <!-- Horizontal View -->
+        <!-- Vertical View -->
         {#if viewMode === "grid"}
             <div
-                class="flex flex-nowrap overflow-x-auto gap-4 pb-4"
+                class="space-y-4"
                 in:fade={{ duration: 300 }}
             >
                 {#each enhancedStages as stage, index}
-                    <div class="flex-shrink-0 w-96" in:fly={{ y: 20, duration: 300, delay: index * 50 }}>
+                    <div in:fly={{ y: 20, duration: 300, delay: index * 50 }}>
                         <StageCard
                             {stage}
                             index={index}
