@@ -372,7 +372,15 @@ async function gitPush(projectId: number, branchName: string = 'HEAD') {
     });
 
     if (!response.ok) {
-        throw new Error('Failed to push changes');
+        try {
+            const errorData = await response.json();
+            // Extract detailed error information if available
+            const errorMessage = errorData.details || errorData.error || 'Failed to push changes';
+            throw new Error(errorMessage);
+        } catch (jsonError) {
+            // If we can't parse JSON, fall back to generic message with status
+            throw new Error(`Failed to push changes (HTTP ${response.status})`);
+        }
     }
     return response.json();
 }

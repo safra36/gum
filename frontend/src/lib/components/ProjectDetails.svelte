@@ -16,6 +16,7 @@
     import { permissions, user } from '$lib/stores/user';
     import { toast as addToast } from "$lib/stores/toast";
     import { Loader2, FolderOpen, GitBranch, Play, Edit, GitBranchIcon, Check, GitCommit, PenTool, ArrowUp, RotateCcw, Clock, Info, Trash2, Terminal, Lock, GitMerge, GitPullRequest, Tag, Upload, Download } from "lucide-svelte";
+    import GitErrorModal from "./GitErrorModal.svelte";
 
     export let project: Project;
     export let onEdit: () => void;
@@ -55,6 +56,8 @@
     let isDeletingTag = false;
     let gitOperationError: string | null = null;
     let gitOperationSuccess: string | null = null;
+    let showGitErrorModal: boolean = false;
+    let gitErrorDetails: string = "";
 
 
     let showCronJobModal = false;
@@ -356,7 +359,9 @@
             gitOperationSuccess = `Changes pushed successfully`;
         } catch (error) {
             console.error("Failed to push:", error);
-            gitOperationError = `Failed to push: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            gitErrorDetails = errorMessage;
+            showGitErrorModal = true;
         } finally {
             isPushing = false;
         }
@@ -1397,3 +1402,12 @@
     </div>
 </div>
 {/if}
+
+<!-- Git Error Modal -->
+<GitErrorModal
+    show={showGitErrorModal}
+    errorTitle="Push Failed"
+    errorMessage={gitErrorDetails}
+    onClose={() => showGitErrorModal = false}
+    onRetry={handlePush}
+/>
