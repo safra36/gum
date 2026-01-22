@@ -374,12 +374,31 @@ async function gitPush(projectId: number, branchName: string = 'HEAD') {
     if (!response.ok) {
         try {
             const errorData = await response.json();
+            
+            // Log the full error data for debugging
+            console.log('Full error response:', errorData);
+            
             // Extract detailed error information if available
             const errorMessage = errorData.details || errorData.error || 'Failed to push changes';
-            throw new Error(errorMessage);
+            
+            // If we have detailed error info, use it directly
+            const fullErrorMessage = errorData.details || errorData.error
+                ? `${errorMessage}`
+                : `Failed to push changes (HTTP ${response.status})`;
+            
+            throw new Error(fullErrorMessage);
         } catch (jsonError) {
-            // If we can't parse JSON, fall back to generic message with status
-            throw new Error(`Failed to push changes (HTTP ${response.status})`);
+            console.error('Failed to parse error JSON:', jsonError);
+            
+            // Try to get the response as text to see what we're actually receiving
+            try {
+                const textResponse = await response.text();
+                console.log('Raw error response:', textResponse);
+                throw new Error(`Failed to push changes (HTTP ${response.status}): ${textResponse}`);
+            } catch (textError) {
+                // If we can't get text either, fall back to generic message
+                throw new Error(`Failed to push changes (HTTP ${response.status})`);
+            }
         }
     }
     return response.json();
