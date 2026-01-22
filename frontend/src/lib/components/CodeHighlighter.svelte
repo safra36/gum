@@ -7,79 +7,71 @@
     export let showLineNumbers: boolean = true;
     export let isExpanded: boolean = false;
     
-    let highlightedCode: string = "";
     let copied: boolean = false;
     let copyTimeout: ReturnType<typeof setTimeout>;
     
-    // Color scheme for bash/shell syntax highlighting
-    const colorScheme = {
-        keyword: "text-blue-600 dark:text-blue-400",
-        string: "text-green-600 dark:text-green-400",
-        comment: "text-gray-500 dark:text-gray-400",
-        variable: "text-purple-600 dark:text-purple-400",
-        function: "text-yellow-600 dark:text-yellow-400",
-        number: "text-orange-600 dark:text-orange-400",
-        command: "text-cyan-600 dark:text-cyan-400",
-        error: "text-red-600 dark:text-red-400"
-    };
-    
-    // Bash/shell syntax patterns
-    const syntaxPatterns = [
-        // Comments
-        { pattern: /#.*$/gm, class: colorScheme.comment },
-        
-        // Strings (single and double quotes)
-        { pattern: /'(?:\\.|[^'\\])*'/g, class: colorScheme.string },
-        { pattern: /"(?:\\.|[^"\\])*"/g, class: colorScheme.string },
-        
-        // Keywords
-        { pattern: /\b(if|then|else|elif|fi|for|while|do|done|case|esac|function|return|echo|export|source|exit|set|unset|shift|break|continue|true|false)\b/g, class: colorScheme.keyword },
-        
-        // Variables
-        { pattern: /\$\w+/g, class: colorScheme.variable },
-        { pattern: /\$\{[^}]+\}/g, class: colorScheme.variable },
-        
-        // Functions
-        { pattern: /\w+\s*\(\)\s*\{/g, class: colorScheme.function },
-        
-        // Numbers
-        { pattern: /\b\d+\b/g, class: colorScheme.number },
-        
-        // Common commands (first word of line)
-        { pattern: /^\s*(cd|ls|mkdir|rm|cp|mv|cat|grep|find|sed|awk|chmod|chown|sudo|apt|yum|npm|yarn|docker|git|echo|printf|test|\w+)/gm, class: colorScheme.command }
-    ];
-    
-    function highlightSyntax(rawCode: string): string {
+    function highlightBashCode(rawCode: string): string {
         if (!rawCode) return "";
         
-        let html = escapeHtml(rawCode);
-        
-        // Apply syntax patterns
-        syntaxPatterns.forEach(({ pattern, class: className }) => {
-            html = html.replace(pattern, (match) => {
-                return `<span class="${className}">${escapeHtml(match)}</span>`;
-            });
-        });
-        
-        // Add line numbers
-        if (showLineNumbers) {
-            const lines = html.split('\n');
-            html = lines.map((line, index) => {
-                const lineNumber = index + 1;
-                return `<div class="flex">
-                    <span class="w-8 text-right pr-3 select-none text-gray-400 dark:text-gray-500">${lineNumber}</span>
-                    <span class="flex-1">${line}</span>
-                </div>`;
-            }).join('');
-        }
+        let html = rawCode
+            .split('\n')
+            .map((line, lineNum) => {
+                // Escape HTML
+                let escapedLine = line
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+                
+                // Highlight comments
+                escapedLine = escapedLine.replace(
+                    /#.*/g,
+                    '<span class="text-gray-400">$&</span>'
+                );
+                
+                // Highlight strings (double quotes)
+                escapedLine = escapedLine.replace(
+                    /"[^"]*"/g,
+                    '<span class="text-green-400">$&</span>'
+                );
+                
+                // Highlight strings (single quotes)
+                escapedLine = escapedLine.replace(
+                    /'[^']*'/g,
+                    '<span class="text-green-400">$&</span>'
+                );
+                
+                // Highlight variables
+                escapedLine = escapedLine.replace(
+                    /\$\{[^}]+\}|\$\w+/g,
+                    '<span class="text-purple-400">$&</span>'
+                );
+                
+                // Highlight keywords
+                const keywords = ['if', 'then', 'else', 'elif', 'fi', 'for', 'while', 'do', 'done', 'case', 'esac', 'function', 'return', 'export', 'source', 'exit', 'set', 'unset', 'shift', 'break', 'continue', 'true', 'false'];
+                keywords.forEach(keyword => {
+                    const regex = new RegExp(`\\b${keyword}\\b`, 'g');
+                    escapedLine = escapedLine.replace(regex, `<span class="text-blue-400">$&</span>`);
+                });
+                
+                // Highlight numbers
+                escapedLine = escapedLine.replace(
+                    /\b\d+\b/g,
+                    '<span class="text-orange-400">$&</span>'
+                );
+                
+                // Highlight common commands at start of line
+                const commands = ['cd', 'ls', 'mkdir', 'rm', 'cp', 'mv', 'cat', 'grep', 'find', 'sed', 'awk', 'chmod', 'chown', 'sudo', 'apt', 'yum', 'npm', 'yarn', 'docker', 'git', 'echo', 'printf', 'test'];
+                const cmdRegex = new RegExp(`^(\\s*)(${commands.join('|')})\\b`);
+                escapedLine = escapedLine.replace(cmdRegex, '$1<span class="text-cyan-400">$2</span>');
+                
+                const lineNumber = lineNum + 1;
+                return `<div class="flex"><span class="w-8 text-right pr-3 select-none text-gray-500">${lineNumber}</span><span class="flex-1">${escapedLine}</span></div>`;
+            })
+            .join('');
         
         return html;
-    }
-    
-    function escapeHtml(text: string): string {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
     
     function copyToClipboard() {
@@ -93,12 +85,6 @@
         });
     }
     
-    // Update highlighted code when input changes
-    $: {
-        highlightedCode = highlightSyntax(code);
-    }
-    
-    // Clean up timeout on unmount
     onMount(() => {
         return () => {
             if (copyTimeout) clearTimeout(copyTimeout);
@@ -128,11 +114,11 @@
             </button>
         </div>
         
-        <div class="p-3 font-mono text-sm overflow-x-auto">
+        <div class="p-3 font-mono text-sm overflow-x-auto bg-gray-950 text-gray-100">
             {#if isExpanded || code.split('\n').length <= 10}
-                {@html highlightedCode}
+                {@html highlightBashCode(code)}
             {:else}
-                {@html highlightedCode.split('\n').slice(0, 10).join('\n')}
+                {@html highlightBashCode(code.split('\n').slice(0, 10).join('\n'))}
                 <div class="mt-2 text-center">
                     <button
                         class="text-blue-400 hover:text-blue-300 text-sm font-medium"
@@ -147,11 +133,6 @@
 </div>
 
 <style>
-    /* Ensure proper monospace font */
-    :global(body) {
-        --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
-    }
-    
     /* Custom scrollbar for code blocks */
     div[class*="overflow-x-auto"] {
         scrollbar-width: thin;
