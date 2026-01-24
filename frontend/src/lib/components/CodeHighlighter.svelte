@@ -10,11 +10,11 @@
     let copied: boolean = false;
     let copyTimeout: ReturnType<typeof setTimeout>;
     
-    // Function to escape HTML entities
-    function escapeHtml(text: string): string {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+    // Function to decode HTML entities
+    function decodeHtmlEntities(text: string): string {
+        const textarea = document.createElement('textarea');
+        textarea.innerHTML = text;
+        return textarea.value;
     }
     
     function copyToClipboard() {
@@ -63,14 +63,14 @@
                     {#each code.split('\n') as line, lineNum}
                         <div class="flex">
                             <span class="w-8 text-right pr-3 select-none text-gray-500">{lineNum + 1}</span>
-                            <span class="flex-1">{@html escapeHtml(line)}</span>
+                            <span class="flex-1">{@html decodeHtmlEntities(line)}</span>
                         </div>
                     {/each}
                 {:else}
                     {#each code.split('\n').slice(0, 10) as line, lineNum}
                         <div class="flex">
                             <span class="w-8 text-right pr-3 select-none text-gray-500">{lineNum + 1}</span>
-                            <span class="flex-1">{@html escapeHtml(line)}</span>
+                            <span class="flex-1">{@html decodeHtmlEntities(line)}</span>
                         </div>
                     {/each}
                     <div class="mt-2 text-center">
